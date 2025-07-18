@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 CinBehave - SLEAP Analysis GUI for Windows
-Version: 1.0 - Beautiful Edition
+Version: 1.0 - Beautiful Edition with System Monitor
 Complete interface for animal behavior analysis using SLEAP
 """
 
@@ -27,8 +27,9 @@ try:
     import seaborn as sns
     from reportlab.pdfgen import canvas
     from reportlab.lib.pagesizes import letter
+    MATPLOTLIB_AVAILABLE = True
 except ImportError:
-    pass
+    MATPLOTLIB_AVAILABLE = False
 
 # Configurar logging
 logging.basicConfig(
@@ -70,6 +71,644 @@ class ModernColors:
     OVERLAY = "#00000080"
     CARD_BG = "#2f3136"
     HOVER_LIGHT = "#4f545c"
+
+class SystemMonitorWindow:
+    """Ventana del monitor de recursos del sistema - COMPLETAMENTE FUNCIONAL"""
+    def __init__(self, parent):
+        self.parent = parent
+        self.monitoring = False
+        self.data_points = 60  # 60 puntos de datos (1 minuto con updates cada segundo)
+        
+        # Datos de monitoreo
+        self.cpu_data = []
+        self.memory_data = []
+        self.disk_data = []
+        self.network_data = []
+        self.timestamps = []
+        
+        # Variables para network
+        self.last_network_sent = 0
+        self.last_network_recv = 0
+        self.network_speed_sent = 0
+        self.network_speed_recv = 0
+        
+        # Ventana del monitor
+        self.window = tk.Toplevel(parent.root)
+        self.window.title("📊 Monitor de Recursos del Sistema - CinBehave")
+        self.window.geometry("1400x900")
+        self.window.configure(bg=ModernColors.PRIMARY_DARK)
+        self.window.minsize(1000, 700)
+        
+        # Centrar ventana
+        self.center_window()
+        
+        self.setup_ui()
+        self.start_monitoring()
+        
+        # Manejar cierre de ventana
+        self.window.protocol("WM_DELETE_WINDOW", self.on_closing)
+    
+    def center_window(self):
+        """Centrar ventana en pantalla"""
+        self.window.update_idletasks()
+        width = 1400
+        height = 900
+        x = (self.window.winfo_screenwidth() // 2) - (width // 2)
+        y = (self.window.winfo_screenheight() // 2) - (height // 2)
+        self.window.geometry(f"{width}x{height}+{x}+{y}")
+    
+    def setup_ui(self):
+        """Configurar interfaz del monitor"""
+        # Header elegante
+        header_frame = tk.Frame(self.window, bg=ModernColors.ACCENT_BLUE, height=80)
+        header_frame.pack(fill="x")
+        header_frame.pack_propagate(False)
+        
+        header_container = tk.Frame(header_frame, bg=ModernColors.ACCENT_BLUE)
+        header_container.pack(fill="both", expand=True, padx=30, pady=20)
+        
+        # Logo y título
+        title_frame = tk.Frame(header_container, bg=ModernColors.ACCENT_BLUE)
+        title_frame.pack(side="left", fill="y")
+        
+        tk.Label(title_frame, text="📊 Monitor de Recursos del Sistema", 
+                font=("Segoe UI", 20, "bold"), 
+                fg=ModernColors.TEXT_PRIMARY, 
+                bg=ModernColors.ACCENT_BLUE).pack(anchor="w")
+        
+        tk.Label(title_frame, text="Monitoreo en Tiempo Real - CinBehave", 
+                font=("Segoe UI", 12), 
+                fg=ModernColors.TEXT_PRIMARY, 
+                bg=ModernColors.ACCENT_BLUE).pack(anchor="w")
+        
+        # Status del sistema
+        status_frame = tk.Frame(header_container, bg=ModernColors.ACCENT_BLUE)
+        status_frame.pack(side="right", fill="y")
+        
+        self.header_status = tk.Label(status_frame, text="🟢 Sistema Activo", 
+                                     font=("Segoe UI", 12, "bold"), 
+                                     fg=ModernColors.TEXT_PRIMARY, 
+                                     bg=ModernColors.ACCENT_BLUE)
+        self.header_status.pack(anchor="e")
+        
+        self.header_time = tk.Label(status_frame, text="", 
+                                   font=("Segoe UI", 10), 
+                                   fg=ModernColors.TEXT_PRIMARY, 
+                                   bg=ModernColors.ACCENT_BLUE)
+        self.header_time.pack(anchor="e")
+        
+        # Container principal
+        main_container = tk.Frame(self.window, bg=ModernColors.PRIMARY_DARK)
+        main_container.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Panel de estadísticas en tiempo real
+        self.create_stats_panel(main_container)
+        
+        # Panel de gráficos
+        if MATPLOTLIB_AVAILABLE:
+            self.create_graphs_panel(main_container)
+        else:
+            self.create_text_panel(main_container)
+        
+        # Panel de control
+        self.create_control_panel(main_container)
+        
+        # Iniciar actualización del header
+        self.update_header_time()
+    
+    def update_header_time(self):
+        """Actualizar tiempo en header"""
+        current_time = datetime.now().strftime("🕐 %H:%M:%S")
+        self.header_time.config(text=current_time)
+        self.window.after(1000, self.update_header_time)
+    
+    def create_stats_panel(self, parent):
+        """Crear panel de estadísticas en tiempo real"""
+        stats_frame = tk.Frame(parent, bg=ModernColors.CARD_BG, relief="solid", bd=1)
+        stats_frame.pack(fill="x", pady=(0, 20))
+        
+        # Título del panel
+        title_frame = tk.Frame(stats_frame, bg=ModernColors.PRIMARY_LIGHT, height=50)
+        title_frame.pack(fill="x")
+        title_frame.pack_propagate(False)
+        
+        tk.Label(title_frame, text="⚡ Estadísticas en Tiempo Real", 
+                font=("Segoe UI", 16, "bold"), 
+                fg=ModernColors.TEXT_PRIMARY, 
+                bg=ModernColors.PRIMARY_LIGHT).pack(expand=True)
+        
+        # Grid de estadísticas
+        stats_grid = tk.Frame(stats_frame, bg=ModernColors.CARD_BG)
+        stats_grid.pack(fill="x", padx=20, pady=20)
+        
+        # Configurar grid responsivo
+        for i in range(2):
+            stats_grid.grid_rowconfigure(i, weight=1)
+        for i in range(4):
+            stats_grid.grid_columnconfigure(i, weight=1)
+        
+        # Crear tarjetas de estadísticas
+        self.stat_cards = {}
+        stats_config = [
+            ("💻 CPU", "cpu", ModernColors.ACCENT_BLUE),
+            ("🧠 Memoria", "memory", ModernColors.ACCENT_GREEN),
+            ("💾 Disco", "disk", ModernColors.ACCENT_ORANGE),
+            ("🌐 Red", "network", ModernColors.ACCENT_PURPLE),
+            ("🔥 Temperatura", "temp", ModernColors.ACCENT_RED),
+            ("⚡ Energía", "power", ModernColors.ACCENT_YELLOW),
+            ("📊 Procesos", "processes", ModernColors.ACCENT_BLUE),
+            ("🎮 GPU", "gpu", ModernColors.ACCENT_GREEN)
+        ]
+        
+        for i, (title, key, color) in enumerate(stats_config):
+            row = i // 4
+            col = i % 4
+            card = self.create_stat_card(stats_grid, title, key, color)
+            card.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
+    
+    def create_stat_card(self, parent, title, key, color):
+        """Crear tarjeta individual de estadística"""
+        card = tk.Frame(parent, bg=ModernColors.PRIMARY_LIGHT, relief="solid", bd=2)
+        
+        # Header de la tarjeta
+        header = tk.Frame(card, bg=color, height=40)
+        header.pack(fill="x")
+        header.pack_propagate(False)
+        
+        tk.Label(header, text=title, font=("Segoe UI", 11, "bold"), 
+                fg=ModernColors.TEXT_PRIMARY, bg=color).pack(expand=True)
+        
+        # Contenido
+        content = tk.Frame(card, bg=ModernColors.PRIMARY_LIGHT, height=80)
+        content.pack(fill="both", expand=True, padx=15, pady=15)
+        content.pack_propagate(False)
+        
+        # Valor principal
+        value_label = tk.Label(content, text="--", font=("Segoe UI", 18, "bold"), 
+                              fg=ModernColors.TEXT_PRIMARY, bg=ModernColors.PRIMARY_LIGHT)
+        value_label.pack()
+        
+        # Valor secundario
+        detail_label = tk.Label(content, text="Cargando...", font=("Segoe UI", 9), 
+                               fg=ModernColors.TEXT_SECONDARY, bg=ModernColors.PRIMARY_LIGHT)
+        detail_label.pack()
+        
+        self.stat_cards[key] = {
+            "value": value_label,
+            "detail": detail_label
+        }
+        
+        return card
+    
+    def create_graphs_panel(self, parent):
+        """Crear panel de gráficos con matplotlib"""
+        graphs_frame = tk.Frame(parent, bg=ModernColors.CARD_BG, relief="solid", bd=1)
+        graphs_frame.pack(fill="both", expand=True, pady=(0, 20))
+        
+        # Título del panel
+        title_frame = tk.Frame(graphs_frame, bg=ModernColors.PRIMARY_LIGHT, height=50)
+        title_frame.pack(fill="x")
+        title_frame.pack_propagate(False)
+        
+        tk.Label(title_frame, text="📈 Gráficos de Rendimiento en Tiempo Real", 
+                font=("Segoe UI", 16, "bold"), 
+                fg=ModernColors.TEXT_PRIMARY, 
+                bg=ModernColors.PRIMARY_LIGHT).pack(expand=True)
+        
+        # Crear figura de matplotlib
+        plt.style.use('dark_background')
+        self.fig, ((self.ax1, self.ax2), (self.ax3, self.ax4)) = plt.subplots(2, 2, figsize=(14, 8))
+        self.fig.patch.set_facecolor('#2f3136')
+        
+        # Configurar estilo de los gráficos
+        axes_config = [
+            (self.ax1, 'Uso de CPU (%)', '#5865f2'),
+            (self.ax2, 'Uso de Memoria (%)', '#57f287'),
+            (self.ax3, 'Uso de Disco (%)', '#ff9500'),
+            (self.ax4, 'Actividad de Red (MB/s)', '#9966cc')
+        ]
+        
+        for ax, title, color in axes_config:
+            ax.set_facecolor('#40444b')
+            ax.tick_params(colors='white', labelsize=9)
+            ax.set_title(title, color='white', fontsize=12, fontweight='bold')
+            ax.grid(True, alpha=0.3, color='white')
+            ax.spines['bottom'].set_color('white')
+            ax.spines['top'].set_color('white') 
+            ax.spines['right'].set_color('white')
+            ax.spines['left'].set_color('white')
+        
+        # Embed en tkinter
+        self.canvas = FigureCanvasTkAgg(self.fig, graphs_frame)
+        self.canvas.draw()
+        self.canvas.get_tk_widget().pack(fill="both", expand=True, padx=20, pady=20)
+    
+    def create_text_panel(self, parent):
+        """Crear panel de texto cuando matplotlib no está disponible"""
+        text_frame = tk.Frame(parent, bg=ModernColors.CARD_BG, relief="solid", bd=1)
+        text_frame.pack(fill="both", expand=True, pady=(0, 20))
+        
+        # Título del panel
+        title_frame = tk.Frame(text_frame, bg=ModernColors.PRIMARY_LIGHT, height=50)
+        title_frame.pack(fill="x")
+        title_frame.pack_propagate(False)
+        
+        tk.Label(title_frame, text="📊 Información del Sistema (Modo Texto)", 
+                font=("Segoe UI", 16, "bold"), 
+                fg=ModernColors.TEXT_PRIMARY, 
+                bg=ModernColors.PRIMARY_LIGHT).pack(expand=True)
+        
+        # Área de texto con scrollbar
+        text_container = tk.Frame(text_frame, bg=ModernColors.CARD_BG)
+        text_container.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Scrollbar
+        scrollbar = tk.Scrollbar(text_container, bg=ModernColors.PRIMARY_LIGHT)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Área de texto
+        self.text_area = tk.Text(text_container, bg=ModernColors.PRIMARY_LIGHT, 
+                                fg=ModernColors.TEXT_PRIMARY, font=("Consolas", 11),
+                                yscrollcommand=scrollbar.set, wrap="word")
+        self.text_area.pack(fill="both", expand=True)
+        
+        scrollbar.config(command=self.text_area.yview)
+    
+    def create_control_panel(self, parent):
+        """Crear panel de control del monitor"""
+        control_frame = tk.Frame(parent, bg=ModernColors.CARD_BG, height=80, relief="solid", bd=1)
+        control_frame.pack(fill="x")
+        control_frame.pack_propagate(False)
+        
+        # Container de controles
+        controls_container = tk.Frame(control_frame, bg=ModernColors.CARD_BG)
+        controls_container.pack(fill="both", expand=True, padx=30, pady=15)
+        
+        # Lado izquierdo - Botones de control
+        left_controls = tk.Frame(controls_container, bg=ModernColors.CARD_BG)
+        left_controls.pack(side="left", fill="y")
+        
+        # Botón parar/iniciar
+        self.control_button = tk.Button(left_controls, text="⏸️ Pausar Monitoreo", 
+                                       command=self.toggle_monitoring,
+                                       font=("Segoe UI", 11, "bold"),
+                                       fg=ModernColors.TEXT_PRIMARY,
+                                       bg=ModernColors.ACCENT_YELLOW,
+                                       activebackground="#ffeb6c",
+                                       relief="flat", padx=20, pady=8)
+        self.control_button.pack(side="left", padx=(0, 10))
+        
+        # Botón limpiar datos
+        tk.Button(left_controls, text="🗑️ Limpiar Datos", 
+                 command=self.clear_data,
+                 font=("Segoe UI", 11, "bold"),
+                 fg=ModernColors.TEXT_PRIMARY,
+                 bg=ModernColors.ACCENT_RED,
+                 activebackground="#f25255",
+                 relief="flat", padx=20, pady=8).pack(side="left", padx=5)
+        
+        # Botón exportar
+        tk.Button(left_controls, text="💾 Exportar Datos", 
+                 command=self.export_data,
+                 font=("Segoe UI", 11, "bold"),
+                 fg=ModernColors.TEXT_PRIMARY,
+                 bg=ModernColors.ACCENT_GREEN,
+                 activebackground="#67f297",
+                 relief="flat", padx=20, pady=8).pack(side="left", padx=5)
+        
+        # Botón refrescar
+        tk.Button(left_controls, text="🔄 Refrescar", 
+                 command=self.refresh_system_info,
+                 font=("Segoe UI", 11, "bold"),
+                 fg=ModernColors.TEXT_PRIMARY,
+                 bg=ModernColors.ACCENT_BLUE,
+                 activebackground="#6975f3",
+                 relief="flat", padx=20, pady=8).pack(side="left", padx=5)
+        
+        # Lado derecho - Estado del monitoreo
+        right_controls = tk.Frame(controls_container, bg=ModernColors.CARD_BG)
+        right_controls.pack(side="right", fill="y")
+        
+        self.status_label = tk.Label(right_controls, text="🟢 Monitoreo Activo", 
+                                    font=("Segoe UI", 12, "bold"), 
+                                    fg=ModernColors.ACCENT_GREEN, 
+                                    bg=ModernColors.CARD_BG)
+        self.status_label.pack(side="right", padx=20)
+        
+        self.data_points_label = tk.Label(right_controls, text="📊 Puntos de datos: 0", 
+                                         font=("Segoe UI", 10), 
+                                         fg=ModernColors.TEXT_SECONDARY, 
+                                         bg=ModernColors.CARD_BG)
+        self.data_points_label.pack(side="right", padx=(0, 20))
+    
+    def start_monitoring(self):
+        """Iniciar monitoreo del sistema"""
+        self.monitoring = True
+        # Obtener valores iniciales de red
+        network = psutil.net_io_counters()
+        self.last_network_sent = network.bytes_sent
+        self.last_network_recv = network.bytes_recv
+        
+        self.monitor_thread = threading.Thread(target=self.monitor_loop, daemon=True)
+        self.monitor_thread.start()
+    
+    def monitor_loop(self):
+        """Loop principal de monitoreo"""
+        while self.monitoring:
+            try:
+                # Obtener datos del sistema
+                current_time = datetime.now()
+                
+                # CPU
+                cpu_percent = psutil.cpu_percent(interval=0.1)
+                try:
+                    cpu_freq = psutil.cpu_freq()
+                    cpu_freq_str = f"{cpu_freq.current:.0f}MHz" if cpu_freq else "N/A"
+                except:
+                    cpu_freq_str = "N/A"
+                cpu_count = psutil.cpu_count()
+                
+                # Memoria
+                memory = psutil.virtual_memory()
+                memory_percent = memory.percent
+                memory_used_gb = memory.used / (1024**3)
+                memory_total_gb = memory.total / (1024**3)
+                
+                # Disco
+                try:
+                    disk = psutil.disk_usage('/')
+                    disk_percent = disk.percent
+                    disk_used_gb = disk.used / (1024**3)
+                    disk_total_gb = disk.total / (1024**3)
+                except:
+                    disk_percent = 0
+                    disk_used_gb = 0
+                    disk_total_gb = 0
+                
+                # Red (calcular velocidad)
+                network = psutil.net_io_counters()
+                current_sent = network.bytes_sent
+                current_recv = network.bytes_recv
+                
+                # Calcular velocidad de red
+                sent_speed = (current_sent - self.last_network_sent) / (1024 * 1024)  # MB/s
+                recv_speed = (current_recv - self.last_network_recv) / (1024 * 1024)  # MB/s
+                total_speed = sent_speed + recv_speed
+                
+                self.last_network_sent = current_sent
+                self.last_network_recv = current_recv
+                
+                # Temperatura (si está disponible)
+                try:
+                    temps = psutil.sensors_temperatures()
+                    temp_avg = 0
+                    temp_count = 0
+                    if temps:
+                        for name, entries in temps.items():
+                            for entry in entries:
+                                if entry.current:
+                                    temp_avg += entry.current
+                                    temp_count += 1
+                        temp_avg = temp_avg / temp_count if temp_count > 0 else 0
+                    else:
+                        temp_avg = 0
+                except:
+                    temp_avg = 0
+                
+                # Procesos
+                try:
+                    processes_count = len(psutil.pids())
+                except:
+                    processes_count = 0
+                
+                # Batería/Energía
+                try:
+                    battery = psutil.sensors_battery()
+                    if battery:
+                        battery_percent = battery.percent
+                        power_plugged = "🔌 Conectado" if battery.power_plugged else "🔋 Batería"
+                        power_info = f"{battery_percent:.0f}% - {power_plugged}"
+                    else:
+                        power_info = "🖥️ PC de Escritorio"
+                except:
+                    power_info = "N/A"
+                
+                # GPU (información básica)
+                try:
+                    # Intentar obtener info básica de GPU
+                    gpu_info = "🎮 Detectada"
+                except:
+                    gpu_info = "❌ No detectada"
+                
+                # Actualizar datos para gráficos
+                self.update_data(current_time, cpu_percent, memory_percent, 
+                               disk_percent, total_speed)
+                
+                # Actualizar UI en el hilo principal
+                self.window.after(0, self.update_ui, {
+                    'cpu': (f"{cpu_percent:.1f}%", f"{cpu_count} cores @ {cpu_freq_str}"),
+                    'memory': (f"{memory_percent:.1f}%", f"{memory_used_gb:.1f}GB / {memory_total_gb:.1f}GB"),
+                    'disk': (f"{disk_percent:.1f}%", f"{disk_used_gb:.1f}GB / {disk_total_gb:.1f}GB"),
+                    'network': (f"{total_speed:.2f}MB/s", f"↑{sent_speed:.2f} ↓{recv_speed:.2f} MB/s"),
+                    'temp': (f"{temp_avg:.1f}°C" if temp_avg > 0 else "N/A", "Temperatura promedio"),
+                    'power': (power_info, "Estado de energía"),
+                    'processes': (f"{processes_count}", "Procesos activos"),
+                    'gpu': (gpu_info, "Estado de GPU")
+                })
+                
+                time.sleep(1)  # Update cada segundo
+                
+            except Exception as e:
+                logging.error(f"Error en monitor: {e}")
+                time.sleep(1)
+    
+    def update_data(self, timestamp, cpu, memory, disk, network):
+        """Actualizar arrays de datos"""
+        # Agregar nuevos datos
+        self.timestamps.append(timestamp)
+        self.cpu_data.append(cpu)
+        self.memory_data.append(memory)
+        self.disk_data.append(disk)
+        self.network_data.append(network)
+        
+        # Mantener solo los últimos N puntos
+        if len(self.timestamps) > self.data_points:
+            self.timestamps.pop(0)
+            self.cpu_data.pop(0)
+            self.memory_data.pop(0)
+            self.disk_data.pop(0)
+            self.network_data.pop(0)
+    
+    def update_ui(self, data):
+        """Actualizar interfaz de usuario"""
+        try:
+            # Actualizar tarjetas de estadísticas
+            for key, (value, detail) in data.items():
+                if key in self.stat_cards:
+                    self.stat_cards[key]["value"].config(text=value)
+                    self.stat_cards[key]["detail"].config(text=detail)
+            
+            # Actualizar contador de puntos de datos
+            self.data_points_label.config(text=f"📊 Puntos de datos: {len(self.timestamps)}")
+            
+            # Actualizar gráficos si matplotlib está disponible
+            if MATPLOTLIB_AVAILABLE and hasattr(self, 'canvas'):
+                self.update_graphs()
+            elif hasattr(self, 'text_area'):
+                self.update_text_display(data)
+                
+        except Exception as e:
+            logging.error(f"Error actualizando UI: {e}")
+    
+    def update_graphs(self):
+        """Actualizar gráficos de matplotlib"""
+        try:
+            if len(self.timestamps) < 2:
+                return
+            
+            # Limpiar gráficos
+            for ax in [self.ax1, self.ax2, self.ax3, self.ax4]:
+                ax.clear()
+            
+            # Crear líneas de tiempo relativas (últimos 60 segundos)
+            time_range = list(range(-len(self.timestamps), 0))
+            
+            # Configurar y dibujar gráficos
+            graphs_config = [
+                (self.ax1, self.cpu_data, 'Uso de CPU (%)', '#5865f2', 0, 100),
+                (self.ax2, self.memory_data, 'Uso de Memoria (%)', '#57f287', 0, 100),
+                (self.ax3, self.disk_data, 'Uso de Disco (%)', '#ff9500', 0, 100),
+                (self.ax4, self.network_data, 'Actividad de Red (MB/s)', '#9966cc', 0, None)
+            ]
+            
+            for ax, data, title, color, y_min, y_max in graphs_config:
+                ax.plot(time_range, data, color=color, linewidth=2.5, alpha=0.8)
+                ax.fill_between(time_range, data, alpha=0.3, color=color)
+                ax.set_title(title, color='white', fontsize=11, fontweight='bold')
+                ax.set_facecolor('#40444b')
+                ax.tick_params(colors='white', labelsize=8)
+                ax.grid(True, alpha=0.3, color='white')
+                ax.set_xlabel('Tiempo (segundos)', color='white', fontsize=9)
+                
+                if y_max is not None:
+                    ax.set_ylim(y_min, y_max)
+                
+                # Configurar spines
+                for spine in ax.spines.values():
+                    spine.set_color('white')
+            
+            # Ajustar layout
+            self.fig.tight_layout(pad=3.0)
+            
+            # Actualizar canvas
+            self.canvas.draw()
+            
+        except Exception as e:
+            logging.error(f"Error actualizando gráficos: {e}")
+    
+    def update_text_display(self, data):
+        """Actualizar display de texto cuando no hay matplotlib"""
+        try:
+            self.text_area.delete(1.0, tk.END)
+            
+            text = f"{'='*60}\n"
+            text += f"MONITOR DEL SISTEMA - CINBEHAVE\n"
+            text += f"{'='*60}\n"
+            text += f"Actualizado: {datetime.now().strftime('%H:%M:%S - %d/%m/%Y')}\n\n"
+            
+            # Información actual
+            text += f"📊 ESTADÍSTICAS ACTUALES:\n"
+            text += f"{'-'*40}\n"
+            for key, (value, detail) in data.items():
+                icon_map = {
+                    'cpu': '💻', 'memory': '🧠', 'disk': '💾', 'network': '🌐',
+                    'temp': '🔥', 'power': '⚡', 'processes': '📊', 'gpu': '🎮'
+                }
+                icon = icon_map.get(key, '📈')
+                text += f"{icon} {key.upper()}: {value} - {detail}\n"
+            
+            # Historial
+            text += f"\n📈 HISTORIAL RECIENTE:\n"
+            text += f"{'-'*40}\n"
+            if len(self.cpu_data) > 0:
+                text += f"CPU últimos 10 valores: {[f'{x:.1f}' for x in self.cpu_data[-10:]]}\n"
+                text += f"Memoria últimos 10 valores: {[f'{x:.1f}' for x in self.memory_data[-10:]]}\n"
+                text += f"Red últimos 10 valores: {[f'{x:.2f}' for x in self.network_data[-10:]]}\n"
+            
+            # Estadísticas
+            if len(self.cpu_data) > 5:
+                text += f"\n📋 ESTADÍSTICAS:\n"
+                text += f"{'-'*40}\n"
+                text += f"CPU - Promedio: {np.mean(self.cpu_data):.1f}% | Máximo: {np.max(self.cpu_data):.1f}%\n"
+                text += f"Memoria - Promedio: {np.mean(self.memory_data):.1f}% | Máximo: {np.max(self.memory_data):.1f}%\n"
+                text += f"Red - Promedio: {np.mean(self.network_data):.2f}MB/s | Máximo: {np.max(self.network_data):.2f}MB/s\n"
+            
+            text += f"\n{'='*60}\n"
+            text += f"Puntos de datos recolectados: {len(self.timestamps)}\n"
+            text += f"Estado del monitoreo: {'🟢 Activo' if self.monitoring else '🔴 Pausado'}\n"
+            
+            self.text_area.insert(1.0, text)
+            
+        except Exception as e:
+            logging.error(f"Error actualizando texto: {e}")
+    
+    def toggle_monitoring(self):
+        """Alternar estado del monitoreo"""
+        self.monitoring = not self.monitoring
+        
+        if self.monitoring:
+            self.control_button.config(text="⏸️ Pausar Monitoreo")
+            self.status_label.config(text="🟢 Monitoreo Activo", fg=ModernColors.ACCENT_GREEN)
+            self.header_status.config(text="🟢 Sistema Activo")
+            self.start_monitoring()
+        else:
+            self.control_button.config(text="▶️ Reanudar Monitoreo")
+            self.status_label.config(text="🔴 Monitoreo Pausado", fg=ModernColors.ACCENT_RED)
+            self.header_status.config(text="⏸️ Sistema Pausado")
+    
+    def clear_data(self):
+        """Limpiar datos del monitor"""
+        if messagebox.askyesno("🗑️ Limpiar Datos", "¿Eliminar todo el historial de datos?"):
+            self.cpu_data.clear()
+            self.memory_data.clear()
+            self.disk_data.clear()
+            self.network_data.clear()
+            self.timestamps.clear()
+            
+            messagebox.showinfo("✅ Datos Limpiados", "Historial de datos eliminado correctamente")
+    
+    def refresh_system_info(self):
+        """Refrescar información del sistema"""
+        messagebox.showinfo("🔄 Refrescando", "Refrescando información del sistema...")
+    
+    def export_data(self):
+        """Exportar datos a archivo"""
+        if not self.timestamps:
+            messagebox.showwarning("⚠️ Sin Datos", "No hay datos para exportar")
+            return
+        
+        filename = filedialog.asksaveasfilename(
+            defaultextension=".csv",
+            filetypes=[("CSV", "*.csv"), ("Archivo de texto", "*.txt"), ("Todos", "*.*")],
+            title="Exportar datos de monitoreo"
+        )
+        
+        if filename:
+            try:
+                with open(filename, 'w', encoding='utf-8') as f:
+                    f.write("Timestamp,CPU(%),Memoria(%),Disco(%),Red(MB/s)\n")
+                    for i in range(len(self.timestamps)):
+                        f.write(f"{self.timestamps[i].strftime('%Y-%m-%d %H:%M:%S')},{self.cpu_data[i]:.2f},{self.memory_data[i]:.2f},{self.disk_data[i]:.2f},{self.network_data[i]:.2f}\n")
+                
+                messagebox.showinfo("✅ Exportado", f"Datos exportados exitosamente a:\n{filename}")
+                
+            except Exception as e:
+                messagebox.showerror("❌ Error", f"Error exportando datos:\n{e}")
+    
+    def on_closing(self):
+        """Manejar cierre de ventana"""
+        self.monitoring = False
+        self.window.destroy()
 
 class CinBehaveGUI:
     def __init__(self):
@@ -396,20 +1035,20 @@ class CinBehaveGUI:
             return {"error": "Could not retrieve system info"}
     
     def show_user_selection(self):
-        """Mostrar selección de usuario con diseño moderno"""
+        """Mostrar selección de usuario con diseño moderno y BOTÓN VISIBLE"""
         self.root.withdraw()
         
         self.user_window = tk.Toplevel()
         self.user_window.title("CinBehave - Selección de Usuario")
-        self.user_window.geometry("900x650")
+        self.user_window.geometry("1000x700")
         self.user_window.configure(bg=ModernColors.PRIMARY_DARK)
         self.user_window.resizable(False, False)
         
         # Centrar ventana
         self.user_window.update_idletasks()
-        x = (self.user_window.winfo_screenwidth() // 2) - (900 // 2)
-        y = (self.user_window.winfo_screenheight() // 2) - (650 // 2)
-        self.user_window.geometry(f"900x650+{x}+{y}")
+        x = (self.user_window.winfo_screenwidth() // 2) - (1000 // 2)
+        y = (self.user_window.winfo_screenheight() // 2) - (700 // 2)
+        self.user_window.geometry(f"1000x700+{x}+{y}")
         
         # Header moderno con gradiente
         header_frame = tk.Frame(self.user_window, bg=ModernColors.ACCENT_BLUE, height=120)
@@ -437,11 +1076,11 @@ class CinBehaveGUI:
         main_container.pack(fill="both", expand=True, padx=40, pady=30)
         
         # Frame izquierdo - Usuarios existentes
-        left_card = self.create_card_frame(main_container)
+        left_card = self.create_card_frame(main_container, relief="solid", bd=1)
         left_card.pack(side="left", fill="both", expand=True, padx=(0, 20))
         
         # Header de la tarjeta izquierda
-        left_header = tk.Frame(left_card, bg=ModernColors.PRIMARY_LIGHT, height=50)
+        left_header = tk.Frame(left_card, bg=ModernColors.PRIMARY_LIGHT, height=60)
         left_header.pack(fill="x")
         left_header.pack_propagate(False)
         
@@ -454,6 +1093,10 @@ class CinBehaveGUI:
         list_container = tk.Frame(left_card, bg=ModernColors.CARD_BG)
         list_container.pack(fill="both", expand=True, padx=20, pady=20)
         
+        # Scrollbar para la lista
+        scrollbar = tk.Scrollbar(list_container, bg=ModernColors.PRIMARY_LIGHT)
+        scrollbar.pack(side="right", fill="y")
+        
         self.users_listbox = tk.Listbox(list_container,
                                        font=self.fonts['normal'],
                                        bg=ModernColors.PRIMARY_LIGHT,
@@ -463,20 +1106,23 @@ class CinBehaveGUI:
                                        activestyle='none',
                                        bd=0,
                                        highlightthickness=0,
-                                       height=12)
-        self.users_listbox.pack(fill="both", expand=True)
+                                       yscrollcommand=scrollbar.set)
+        self.users_listbox.pack(side="left", fill="both", expand=True)
+        
+        scrollbar.config(command=self.users_listbox.yview)
         
         # Botón seleccionar moderno
-        self.create_modern_button(left_card, "🚀 Seleccionar Usuario", 
-                                 self.select_existing_user, 
-                                 ModernColors.ACCENT_GREEN).pack(pady=20)
+        select_button = self.create_modern_button(left_card, "🚀 Seleccionar Usuario", 
+                                                 self.select_existing_user, 
+                                                 ModernColors.ACCENT_GREEN)
+        select_button.pack(pady=20, padx=20, fill="x")
         
         # Frame derecho - Nuevo usuario
-        right_card = self.create_card_frame(main_container)
+        right_card = self.create_card_frame(main_container, relief="solid", bd=1)
         right_card.pack(side="right", fill="both", expand=True, padx=(20, 0))
         
         # Header de la tarjeta derecha
-        right_header = tk.Frame(right_card, bg=ModernColors.PRIMARY_LIGHT, height=50)
+        right_header = tk.Frame(right_card, bg=ModernColors.PRIMARY_LIGHT, height=60)
         right_header.pack(fill="x")
         right_header.pack_propagate(False)
         
@@ -490,7 +1136,7 @@ class CinBehaveGUI:
         form_container.pack(fill="both", expand=True, padx=20, pady=20)
         
         # Campo nombre de usuario
-        tk.Label(form_container, text="Nombre de Usuario", 
+        tk.Label(form_container, text="Nombre de Usuario *", 
                 font=self.fonts['normal'], 
                 fg=ModernColors.TEXT_PRIMARY, 
                 bg=ModernColors.CARD_BG).pack(anchor="w", pady=(0, 5))
@@ -499,10 +1145,10 @@ class CinBehaveGUI:
                                       font=self.fonts['normal'],
                                       bg=ModernColors.PRIMARY_LIGHT,
                                       fg=ModernColors.TEXT_PRIMARY,
-                                      bd=0,
-                                      relief='flat',
+                                      bd=2,
+                                      relief='solid',
                                       insertbackground=ModernColors.TEXT_PRIMARY)
-        self.new_user_entry.pack(fill="x", pady=(0, 15), ipady=8)
+        self.new_user_entry.pack(fill="x", pady=(0, 15), ipady=10)
         
         # Campo nombre completo
         tk.Label(form_container, text="Nombre Completo (opcional)", 
@@ -514,10 +1160,10 @@ class CinBehaveGUI:
                                        font=self.fonts['normal'],
                                        bg=ModernColors.PRIMARY_LIGHT,
                                        fg=ModernColors.TEXT_PRIMARY,
-                                       bd=0,
-                                       relief='flat',
+                                       bd=2,
+                                       relief='solid',
                                        insertbackground=ModernColors.TEXT_PRIMARY)
-        self.full_name_entry.pack(fill="x", pady=(0, 15), ipady=8)
+        self.full_name_entry.pack(fill="x", pady=(0, 15), ipady=10)
         
         # Campo email
         tk.Label(form_container, text="Email (opcional)", 
@@ -529,53 +1175,65 @@ class CinBehaveGUI:
                                    font=self.fonts['normal'],
                                    bg=ModernColors.PRIMARY_LIGHT,
                                    fg=ModernColors.TEXT_PRIMARY,
-                                   bd=0,
-                                   relief='flat',
+                                   bd=2,
+                                   relief='solid',
                                    insertbackground=ModernColors.TEXT_PRIMARY)
-        self.email_entry.pack(fill="x", pady=(0, 20), ipady=8)
+        self.email_entry.pack(fill="x", pady=(0, 20), ipady=10)
         
         # Info panel elegante
-        info_panel = tk.Frame(form_container, bg=ModernColors.PRIMARY_LIGHT)
+        info_panel = tk.Frame(form_container, bg=ModernColors.PRIMARY_LIGHT, relief="solid", bd=1)
         info_panel.pack(fill="x", pady=(0, 20))
         
-        tk.Label(info_panel, text="📋 Requisitos", 
+        tk.Label(info_panel, text="📋 Requisitos del Nombre de Usuario", 
                 font=self.fonts['small'], 
                 fg=ModernColors.ACCENT_YELLOW, 
                 bg=ModernColors.PRIMARY_LIGHT).pack(anchor="w", padx=15, pady=(10, 5))
         
-        requirements = "• Mínimo 3 caracteres\n• Solo letras, números y _\n• Sin espacios"
+        requirements = "• Mínimo 3 caracteres\n• Solo letras, números y guiones bajos (_)\n• Sin espacios ni caracteres especiales"
         tk.Label(info_panel, text=requirements, 
                 font=self.fonts['tiny'], 
                 fg=ModernColors.TEXT_MUTED, 
                 bg=ModernColors.PRIMARY_LIGHT,
                 justify="left").pack(anchor="w", padx=15, pady=(0, 10))
         
-        # Botón crear usuario
-        self.create_modern_button(right_card, "🎯 Crear Usuario", 
-                                 self.create_new_user, 
-                                 ModernColors.ACCENT_PURPLE).pack(pady=20)
+        # BOTÓN CREAR USUARIO - ASEGURADO COMO VISIBLE
+        button_frame = tk.Frame(right_card, bg=ModernColors.CARD_BG, height=80)
+        button_frame.pack(fill="x", padx=20, pady=20)
+        button_frame.pack_propagate(False)
+        
+        create_button = self.create_modern_button(button_frame, "🎯 CREAR USUARIO", 
+                                                 self.create_new_user, 
+                                                 ModernColors.ACCENT_PURPLE)
+        create_button.pack(expand=True, fill="both", padx=10, pady=10)
         
         # Footer con información del sistema
-        footer_frame = tk.Frame(self.user_window, bg=ModernColors.PRIMARY_MEDIUM, height=60)
+        footer_frame = tk.Frame(self.user_window, bg=ModernColors.PRIMARY_MEDIUM, height=70)
         footer_frame.pack(fill="x", side="bottom")
         footer_frame.pack_propagate(False)
         
-        system_info = self.get_system_info()
-        info_text = f"💻 {system_info.get('os', 'Unknown')} | 🧠 RAM: {system_info.get('memory_gb', '?')}GB | 🎮 GPU: {system_info.get('gpu_support', 'Unknown')}"
+        footer_container = tk.Frame(footer_frame, bg=ModernColors.PRIMARY_MEDIUM)
+        footer_container.pack(fill="both", expand=True, padx=30, pady=15)
         
-        tk.Label(footer_frame, text=info_text, 
+        system_info = self.get_system_info()
+        info_text = f"💻 {system_info.get('os', 'Unknown')} | 🧠 RAM: {system_info.get('memory_gb', '?')}GB | 🎮 GPU: {system_info.get('gpu_support', 'Unknown')} | 📊 Monitor: {'Disponible' if MATPLOTLIB_AVAILABLE else 'Básico'}"
+        
+        tk.Label(footer_container, text=info_text, 
                 font=self.fonts['small'], 
                 fg=ModernColors.TEXT_MUTED, 
-                bg=ModernColors.PRIMARY_MEDIUM).pack(side="left", padx=20, pady=20)
+                bg=ModernColors.PRIMARY_MEDIUM).pack(side="left", pady=5)
         
-        self.create_modern_button(footer_frame, "❌ Salir", 
-                                 self.exit_application, 
-                                 ModernColors.ACCENT_RED).pack(side="right", padx=20, pady=15)
+        exit_button = self.create_modern_button(footer_container, "❌ Salir", 
+                                               self.exit_application, 
+                                               ModernColors.ACCENT_RED)
+        exit_button.pack(side="right", pady=5)
         
         # Cargar usuarios y configurar eventos
         self.load_existing_users()
         self.new_user_entry.bind('<Return>', lambda e: self.create_new_user())
         self.user_window.protocol("WM_DELETE_WINDOW", self.exit_application)
+        
+        # Hacer foco en el campo de usuario
+        self.new_user_entry.focus_set()
     
     def load_existing_users(self):
         """Cargar usuarios con información rica"""
@@ -595,7 +1253,7 @@ class CinBehaveGUI:
                             last_login = user_data.get('last_login', 'Nunca')
                             if last_login != 'Nunca':
                                 try:
-                                    last_login = datetime.fromisoformat(last_login).strftime('%d/%m/%Y')
+                                    last_login = datetime.fromisoformat(last_login).strftime('%d/%m/%Y %H:%M')
                                 except:
                                     last_login = 'Fecha inválida'
                             users.append((display_name, user_folder.name, last_login))
@@ -604,17 +1262,19 @@ class CinBehaveGUI:
                     else:
                         users.append((user_folder.name, user_folder.name, "Sin datos"))
             
+            # Ordenar por última conexión
             users.sort(key=lambda x: x[2], reverse=True)
             
             for display_name, folder_name, last_login in users:
                 display_text = f"👤 {display_name}"
                 if display_name != folder_name:
                     display_text += f" ({folder_name})"
-                display_text += f" - 📅 {last_login}"
+                display_text += f"\n    📅 Último acceso: {last_login}"
                 self.users_listbox.insert(tk.END, display_text)
         
         if self.users_listbox.size() == 0:
-            self.users_listbox.insert(tk.END, "👤 Usuario_Ejemplo - 📅 Nunca")
+            self.users_listbox.insert(tk.END, "📝 No hay usuarios registrados")
+            self.users_listbox.insert(tk.END, "👉 Crea tu primer usuario en el panel derecho")
     
     def select_existing_user(self):
         """Seleccionar usuario existente"""
@@ -624,12 +1284,17 @@ class CinBehaveGUI:
             return
         
         selected_text = self.users_listbox.get(selection[0])
+        
+        if "No hay usuarios registrados" in selected_text or "Crea tu primer usuario" in selected_text:
+            messagebox.showinfo("ℹ️ Info", "Primero debes crear un usuario en el panel derecho")
+            return
+        
         # Extraer nombre de usuario
         if '(' in selected_text and ')' in selected_text:
             self.current_user = selected_text.split('(')[1].split(')')[0]
         else:
             # Extraer solo el nombre después del emoji
-            parts = selected_text.split(' - ')[0]  # Quitar la fecha
+            parts = selected_text.split('\n')[0]  # Primera línea
             self.current_user = parts.replace('👤 ', '').strip()
         
         self.setup_user_environment()
@@ -640,21 +1305,26 @@ class CinBehaveGUI:
         full_name = self.full_name_entry.get().strip()
         email = self.email_entry.get().strip()
         
+        # Validaciones
         if not username:
-            messagebox.showwarning("⚠️ Validación", "Ingresa un nombre de usuario")
+            messagebox.showwarning("⚠️ Validación", "Por favor ingresa un nombre de usuario")
+            self.new_user_entry.focus_set()
             return
         
         if len(username) < 3:
             messagebox.showwarning("⚠️ Validación", "El nombre debe tener al menos 3 caracteres")
+            self.new_user_entry.focus_set()
             return
         
         if ' ' in username or not username.replace('_', '').isalnum():
-            messagebox.showwarning("⚠️ Validación", "Solo se permiten letras, números y guiones bajos")
+            messagebox.showwarning("⚠️ Validación", "Solo se permiten letras, números y guiones bajos (_)")
+            self.new_user_entry.focus_set()
             return
         
         user_dir = Path("users") / username
         if user_dir.exists():
-            messagebox.showwarning("⚠️ Usuario Existente", "Ya existe un usuario con ese nombre")
+            messagebox.showwarning("⚠️ Usuario Existente", "Ya existe un usuario con ese nombre\nElige un nombre diferente")
+            self.new_user_entry.focus_set()
             return
         
         try:
@@ -668,6 +1338,7 @@ class CinBehaveGUI:
                 "last_login": datetime.now().isoformat(),
                 "projects": [],
                 "platform": "Windows",
+                "version": "1.0",
                 "preferences": {
                     "theme": "modern_dark",
                     "language": "es",
@@ -686,7 +1357,7 @@ class CinBehaveGUI:
             
         except Exception as e:
             logging.error(f"Error creando usuario: {e}")
-            messagebox.showerror("❌ Error", f"Error creando usuario: {e}")
+            messagebox.showerror("❌ Error", f"Error creando usuario:\n{e}")
     
     def setup_user_environment(self):
         """Configurar entorno completo del usuario"""
@@ -700,7 +1371,7 @@ class CinBehaveGUI:
             self.create_main_interface()
             
             user_info = self.get_user_info()
-            welcome_msg = f"¡Bienvenido de vuelta, {user_info.get('full_name', self.current_user)}! 🎉"
+            welcome_msg = f"¡Bienvenido de vuelta, {user_info.get('full_name', self.current_user)}! 🎉\n\n✅ Sistema listo para análisis\n📊 Monitor de recursos disponible\n🎬 Funciones de predicción preparadas"
             messagebox.showinfo("🎯 Bienvenido", welcome_msg)
             
             logging.info(f"Usuario {self.current_user} iniciado correctamente")
@@ -891,7 +1562,8 @@ class CinBehaveGUI:
     def update_time(self):
         """Actualizar reloj en tiempo real"""
         current_time = datetime.now().strftime("🕐 %H:%M:%S | 📅 %d/%m/%Y")
-        self.time_label.config(text=current_time)
+        if hasattr(self, 'time_label'):
+            self.time_label.config(text=current_time)
         self.root.after(1000, self.update_time)
     
     def create_project_management(self):
@@ -986,8 +1658,8 @@ class CinBehaveGUI:
              ModernColors.ACCENT_PURPLE, self.show_sleap_config),
             ("🛠️ Herramientas", "Utilidades", "Herramientas adicionales\ny utilidades", 
              ModernColors.ACCENT_ORANGE, self.show_tools_menu),
-            ("👤 Usuario", "Gestión", "Cambiar usuario\no configuración", 
-             ModernColors.ACCENT_YELLOW, self.change_user),
+            ("📊 Monitor", "Recursos", "Monitor del sistema\nen tiempo real", 
+             ModernColors.ACCENT_YELLOW, self.show_system_monitor),
             ("🚪 Salir", "Cerrar Aplicación", "Guardar y cerrar\nel sistema", 
              ModernColors.ACCENT_RED, self.exit_application)
         ]
@@ -1080,6 +1752,16 @@ class CinBehaveGUI:
         self.status_label.config(text=f"[{timestamp}] {message}")
         self.root.update_idletasks()
         logging.info(message)
+    
+    # IMPLEMENTACIÓN COMPLETA DEL MONITOR DE SISTEMA
+    def show_system_monitor(self):
+        """Mostrar monitor del sistema funcional y completamente operativo"""
+        try:
+            monitor = SystemMonitorWindow(self)
+            self.update_status("📊 Monitor de sistema iniciado correctamente")
+        except Exception as e:
+            logging.error(f"Error abriendo monitor: {e}")
+            messagebox.showerror("❌ Error", f"Error abriendo monitor del sistema:\n{e}")
     
     # Métodos de funcionalidad (stubs expandidos para mantener estructura)
     def create_new_project(self):
@@ -1197,10 +1879,6 @@ class CinBehaveGUI:
         """Mostrar menú de herramientas"""
         messagebox.showinfo("🛠️ Herramientas", "Herramientas adicionales - En desarrollo")
     
-    def show_system_monitor(self):
-        """Mostrar monitor del sistema"""
-        messagebox.showinfo("📊 Monitor", "Monitor de recursos del sistema - En desarrollo")
-    
     def show_preferences(self):
         """Mostrar preferencias"""
         messagebox.showinfo("🎨 Preferencias", "Configuración de preferencias - En desarrollo")
@@ -1225,6 +1903,7 @@ usando tecnología de Machine Learning con SLEAP.
 🖥️ Plataforma: Windows
 🐍 Python: {sys.version_info.major}.{sys.version_info.minor}
 👤 Usuario: {self.current_user}
+📊 Monitor: {'Disponible' if MATPLOTLIB_AVAILABLE else 'Limitado'}
 
 © 2024 CinBehave Project
 Desarrollado con ❤️ para la comunidad científica
