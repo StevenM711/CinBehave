@@ -19,7 +19,10 @@ import logging
 from pathlib import Path
 from datetime import datetime
 import numpy as np
-from PIL import Image, ImageTk
+try:
+    from PIL import Image, ImageTk
+except ImportError:
+    pass
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
@@ -27,9 +30,6 @@ import seaborn as sns
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
-import winreg
-import win32gui
-import win32con
 
 # Configurar logging
 logging.basicConfig(
@@ -98,7 +98,10 @@ class CinBehaveGUI:
         style = ttk.Style()
         
         # Usar tema nativo de Windows
-        style.theme_use('winnative')
+        try:
+            style.theme_use('winnative')
+        except:
+            style.theme_use('default')
         
         # Configurar colores específicos para Windows
         style.configure('TLabel', background='#2c3e50', foreground='#ecf0f1')
@@ -628,7 +631,10 @@ class CinBehaveGUI:
         
         # Configurar ventana principal
         self.root.title(f"CinBehave - {self.current_user}")
-        self.root.state('zoomed')  # Maximizar en Windows
+        try:
+            self.root.state('zoomed')  # Maximizar en Windows
+        except:
+            pass
         
         # Crear barra de menú
         self.create_menu_bar()
@@ -751,13 +757,6 @@ class CinBehaveGUI:
                           relief="raised", bd=1,
                           padx=10, pady=2)
         button.pack(side="left", padx=2, pady=2)
-        
-        # Tooltip simple
-        def show_tooltip(event):
-            # Implementar tooltip si es necesario
-            pass
-        
-        button.bind("<Enter>", show_tooltip)
         
         return button
     
@@ -915,7 +914,9 @@ class CinBehaveGUI:
     # Métodos de funcionalidad (stubs para implementar)
     def create_new_project(self):
         """Crear nuevo proyecto"""
-        messagebox.showinfo("Desarrollo", "Función create_new_project - En desarrollo")
+        project_name = simpledialog.askstring("Nuevo Proyecto", "Nombre del proyecto:")
+        if project_name:
+            messagebox.showinfo("Desarrollo", f"Proyecto '{project_name}' - En desarrollo")
     
     def load_project(self):
         """Cargar proyecto"""
@@ -959,7 +960,7 @@ class CinBehaveGUI:
     
     def show_about(self):
         """Mostrar información sobre la aplicación"""
-        about_text = """
+        about_text = f"""
 CinBehave - SLEAP Analysis GUI
 Versión 1.0
 
@@ -967,10 +968,10 @@ Sistema de análisis de videos con SLEAP
 para investigación de comportamiento animal.
 
 Desarrollado para Windows
-Python {}.{}
+Python {sys.version_info.major}.{sys.version_info.minor}
 
 © 2024 CinBehave Project
-        """.format(sys.version_info.major, sys.version_info.minor)
+        """
         
         messagebox.showinfo("Acerca de CinBehave", about_text)
     
@@ -1038,7 +1039,10 @@ def main():
         
     except Exception as e:
         print(f"Error iniciando aplicación: {e}")
-        messagebox.showerror("Error Fatal", f"Error iniciando aplicación: {e}")
+        try:
+            messagebox.showerror("Error Fatal", f"Error iniciando aplicación: {e}")
+        except:
+            print("No se pudo mostrar ventana de error")
 
 if __name__ == "__main__":
     main()
