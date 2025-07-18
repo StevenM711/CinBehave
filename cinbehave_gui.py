@@ -854,7 +854,15 @@ class CinBehaveGUI:
     
     def create_card_frame(self, parent, **kwargs):
         """Crear frame con estilo de tarjeta moderna"""
-        return tk.Frame(parent, bg=ModernColors.CARD_BG, relief='flat', bd=0, **kwargs)
+        # Configurar valores por defecto
+        defaults = {
+            'bg': ModernColors.CARD_BG,
+            'relief': 'flat',
+            'bd': 0
+        }
+        # Actualizar con kwargs (permite sobrescribir defaults)
+        defaults.update(kwargs)
+        return tk.Frame(parent, **defaults)
     
     def lighten_color(self, color):
         """Aclarar color para efectos hover"""
