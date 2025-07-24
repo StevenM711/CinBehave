@@ -72,6 +72,226 @@ class ModernColors:
     CARD_BG = "#2f3136"
     HOVER_LIGHT = "#4f545c"
 
+class VideoProgressWindow:
+    """Ventana de progreso para copia de videos"""
+    def __init__(self, parent, videos_to_copy, destination_folder):
+        self.parent = parent
+        self.videos_to_copy = videos_to_copy
+        self.destination_folder = destination_folder
+        self.total_videos = len(videos_to_copy)
+        self.current_video = 0
+        self.copying = True
+        self.success = False
+        
+        # Crear ventana
+        self.window = tk.Toplevel(parent.root)
+        self.window.title("📥 Copiando Videos - CinBehave")
+        self.window.geometry("600x400")
+        self.window.configure(bg=ModernColors.PRIMARY_DARK)
+        self.window.resizable(False, False)
+        self.window.transient(parent.root)
+        self.window.grab_set()
+        
+        # Centrar ventana
+        self.center_window()
+        
+        self.setup_ui()
+        
+        # Iniciar copia en hilo separado
+        self.copy_thread = threading.Thread(target=self.copy_videos_thread, daemon=True)
+        self.copy_thread.start()
+        
+        # Manejar cierre de ventana
+        self.window.protocol("WM_DELETE_WINDOW", self.on_closing)
+    
+    def center_window(self):
+        """Centrar ventana en pantalla"""
+        self.window.update_idletasks()
+        width = 600
+        height = 400
+        x = (self.window.winfo_screenwidth() // 2) - (width // 2)
+        y = (self.window.winfo_screenheight() // 2) - (height // 2)
+        self.window.geometry(f"{width}x{height}+{x}+{y}")
+    
+    def setup_ui(self):
+        """Configurar interfaz de progreso"""
+        # Header
+        header_frame = tk.Frame(self.window, bg=ModernColors.ACCENT_BLUE, height=80)
+        header_frame.pack(fill="x")
+        header_frame.pack_propagate(False)
+        
+        tk.Label(header_frame, text="📥 Copiando Videos al Proyecto", 
+                font=("Segoe UI", 18, "bold"), 
+                fg=ModernColors.TEXT_PRIMARY, 
+                bg=ModernColors.ACCENT_BLUE).pack(expand=True)
+        
+        # Container principal
+        main_container = tk.Frame(self.window, bg=ModernColors.PRIMARY_DARK)
+        main_container.pack(fill="both", expand=True, padx=30, pady=30)
+        
+        # Información general
+        info_frame = tk.Frame(main_container, bg=ModernColors.CARD_BG, relief="solid", bd=1)
+        info_frame.pack(fill="x", pady=(0, 20))
+        
+        tk.Label(info_frame, text="ℹ️ Información de la Copia", 
+                font=("Segoe UI", 14, "bold"), 
+                fg=ModernColors.TEXT_PRIMARY, 
+                bg=ModernColors.CARD_BG).pack(pady=(15, 10))
+        
+        self.info_label = tk.Label(info_frame, text=f"Total de videos: {self.total_videos}\nDestino: {self.destination_folder}", 
+                                  font=("Segoe UI", 11), 
+                                  fg=ModernColors.TEXT_SECONDARY, 
+                                  bg=ModernColors.CARD_BG,
+                                  justify="left")
+        self.info_label.pack(pady=(0, 15))
+        
+        # Progreso general
+        progress_frame = tk.Frame(main_container, bg=ModernColors.CARD_BG, relief="solid", bd=1)
+        progress_frame.pack(fill="x", pady=(0, 20))
+        
+        tk.Label(progress_frame, text="📊 Progreso General", 
+                font=("Segoe UI", 14, "bold"), 
+                fg=ModernColors.TEXT_PRIMARY, 
+                bg=ModernColors.CARD_BG).pack(pady=(15, 10))
+        
+        self.progress_label = tk.Label(progress_frame, text="Video 0 de " + str(self.total_videos), 
+                                      font=("Segoe UI", 12), 
+                                      fg=ModernColors.TEXT_PRIMARY, 
+                                      bg=ModernColors.CARD_BG)
+        self.progress_label.pack(pady=5)
+        
+        # Barra de progreso
+        progress_container = tk.Frame(progress_frame, bg=ModernColors.CARD_BG)
+        progress_container.pack(fill="x", padx=20, pady=10)
+        
+        self.progress_bar = ttk.Progressbar(progress_container, mode='determinate', 
+                                           length=500, style='Modern.TProgressbar')
+        self.progress_bar.pack(fill="x")
+        self.progress_bar['maximum'] = self.total_videos
+        
+        self.percentage_label = tk.Label(progress_frame, text="0%", 
+                                        font=("Segoe UI", 11, "bold"), 
+                                        fg=ModernColors.ACCENT_GREEN, 
+                                        bg=ModernColors.CARD_BG)
+        self.percentage_label.pack(pady=(5, 15))
+        
+        # Video actual
+        current_frame = tk.Frame(main_container, bg=ModernColors.CARD_BG, relief="solid", bd=1)
+        current_frame.pack(fill="x", pady=(0, 20))
+        
+        tk.Label(current_frame, text="🎬 Video Actual", 
+                font=("Segoe UI", 14, "bold"), 
+                fg=ModernColors.TEXT_PRIMARY, 
+                bg=ModernColors.CARD_BG).pack(pady=(15, 10))
+        
+        self.current_video_label = tk.Label(current_frame, text="Preparando...", 
+                                           font=("Segoe UI", 10), 
+                                           fg=ModernColors.TEXT_SECONDARY, 
+                                           bg=ModernColors.CARD_BG,
+                                           wraplength=500)
+        self.current_video_label.pack(pady=(0, 15))
+        
+        # Botón cancelar
+        button_frame = tk.Frame(main_container, bg=ModernColors.PRIMARY_DARK)
+        button_frame.pack(fill="x")
+        
+        self.cancel_button = tk.Button(button_frame, text="❌ Cancelar", 
+                                      command=self.cancel_copy,
+                                      font=("Segoe UI", 11, "bold"),
+                                      fg=ModernColors.TEXT_PRIMARY,
+                                      bg=ModernColors.ACCENT_RED,
+                                      activebackground="#f25255",
+                                      relief="flat", padx=20, pady=8)
+        self.cancel_button.pack()
+    
+    def copy_videos_thread(self):
+        """Hilo para copiar videos"""
+        try:
+            for i, video_path in enumerate(self.videos_to_copy):
+                if not self.copying:
+                    break
+                
+                self.current_video = i + 1
+                video_name = Path(video_path).name
+                destination_path = self.destination_folder / video_name
+                
+                # Actualizar UI
+                self.window.after(0, self.update_progress, video_name, video_path)
+                
+                # Copiar archivo
+                try:
+                    shutil.copy2(video_path, destination_path)
+                    logging.info(f"Video copiado: {video_name}")
+                except Exception as e:
+                    logging.error(f"Error copiando {video_name}: {e}")
+                    self.window.after(0, self.show_error, f"Error copiando {video_name}:\n{e}")
+                    return
+                
+                # Pequeña pausa para no saturar la UI
+                time.sleep(0.1)
+            
+            if self.copying:
+                self.success = True
+                self.window.after(0, self.copy_completed)
+                
+        except Exception as e:
+            logging.error(f"Error en copia de videos: {e}")
+            self.window.after(0, self.show_error, f"Error general en la copia:\n{e}")
+    
+    def update_progress(self, video_name, video_path):
+        """Actualizar interfaz de progreso"""
+        # Actualizar contador
+        self.progress_label.config(text=f"Video {self.current_video} de {self.total_videos}")
+        
+        # Actualizar barra de progreso
+        self.progress_bar['value'] = self.current_video
+        
+        # Actualizar porcentaje
+        percentage = int((self.current_video / self.total_videos) * 100)
+        self.percentage_label.config(text=f"{percentage}%")
+        
+        # Actualizar video actual
+        self.current_video_label.config(text=f"Copiando: {video_name}\nDesde: {video_path}")
+        
+        self.window.update_idletasks()
+    
+    def copy_completed(self):
+        """Copia completada exitosamente"""
+        self.progress_label.config(text="¡Copia completada exitosamente!")
+        self.percentage_label.config(text="100%", fg=ModernColors.ACCENT_GREEN)
+        self.current_video_label.config(text=f"✅ Todos los videos han sido copiados correctamente\n\nTotal: {self.total_videos} videos")
+        
+        self.cancel_button.config(text="✅ Cerrar", bg=ModernColors.ACCENT_GREEN,
+                                 activebackground="#67f297", command=self.close_success)
+    
+    def show_error(self, error_message):
+        """Mostrar error en la copia"""
+        self.copying = False
+        self.current_video_label.config(text=f"❌ Error durante la copia:\n{error_message}")
+        self.cancel_button.config(text="❌ Cerrar", command=self.close_error)
+    
+    def cancel_copy(self):
+        """Cancelar copia de videos"""
+        if messagebox.askyesno("⚠️ Cancelar Copia", "¿Estás seguro de que deseas cancelar la copia de videos?"):
+            self.copying = False
+            self.window.destroy()
+    
+    def close_success(self):
+        """Cerrar ventana después de éxito"""
+        self.window.destroy()
+    
+    def close_error(self):
+        """Cerrar ventana después de error"""
+        self.copying = False
+        self.window.destroy()
+    
+    def on_closing(self):
+        """Manejar cierre de ventana"""
+        if self.success:
+            self.window.destroy()
+        else:
+            self.cancel_copy()
+
 class SystemMonitorWindow:
     """Ventana del monitor de recursos del sistema - COMPLETAMENTE FUNCIONAL"""
     def __init__(self, parent):
@@ -752,6 +972,9 @@ class CinBehaveGUI:
         self.fig = None
         self.ax = None
         
+        # NUEVA VARIABLE: Directorio principal de proyectos
+        self.projects_root_dir = Path.cwd() / "Proyectos"
+        
         # Configurar fuentes modernas
         self.fonts = {
             'title': ('Segoe UI', 24, 'bold'),
@@ -981,7 +1204,8 @@ class CinBehaveGUI:
         try:
             directories = [
                 "users", "temp", "logs", "config", 
-                "assets", "docs", "models", "exports"
+                "assets", "docs", "models", "exports",
+                "Proyectos"  # NUEVA: Carpeta estándar para proyectos
             ]
             
             for directory in directories:
@@ -1000,12 +1224,14 @@ class CinBehaveGUI:
                     "gpu_support": self.check_gpu_support(),
                     "system_info": self.get_system_info(),
                     "ui_animations": True,
-                    "high_dpi": True
+                    "high_dpi": True,
+                    "projects_directory": str(self.projects_root_dir)  # NUEVA: Configuración del directorio de proyectos
                 }
                 with open(config_file, 'w') as f:
                     json.dump(windows_config, f, indent=2)
             
             logging.info("Sistema avanzado inicializado correctamente")
+            logging.info(f"Directorio de proyectos: {self.projects_root_dir}")
             
         except Exception as e:
             logging.error(f"Error inicializando sistema: {e}")
@@ -1495,6 +1721,8 @@ class CinBehaveGUI:
         file_menu.add_command(label="📂 Abrir Proyecto", command=self.load_project)
         file_menu.add_command(label="💾 Guardar Proyecto", command=self.save_current_project)
         file_menu.add_separator()
+        file_menu.add_command(label="📁 Abrir Carpeta de Proyectos", command=self.open_projects_folder)
+        file_menu.add_separator()
         file_menu.add_command(label="🚪 Salir", command=self.exit_application)
         
         # Menú Herramientas
@@ -1510,6 +1738,19 @@ class CinBehaveGUI:
         help_menu.add_command(label="📖 Documentación", command=self.show_documentation)
         help_menu.add_command(label="🆘 Soporte", command=self.show_support)
         help_menu.add_command(label="ℹ️ Acerca de", command=self.show_about)
+    
+    def open_projects_folder(self):
+        """Abrir carpeta de proyectos en el explorador"""
+        try:
+            if self.projects_root_dir.exists():
+                os.startfile(str(self.projects_root_dir))
+                self.update_status(f"📁 Abriendo carpeta: {self.projects_root_dir}")
+            else:
+                messagebox.showwarning("⚠️ Carpeta no encontrada", 
+                                     f"La carpeta de proyectos no existe:\n{self.projects_root_dir}")
+        except Exception as e:
+            logging.error(f"Error abriendo carpeta de proyectos: {e}")
+            messagebox.showerror("❌ Error", f"Error abriendo carpeta:\n{e}")
     
     def create_elegant_header(self):
         """Crear header elegante con información del usuario"""
@@ -1771,41 +2012,192 @@ class CinBehaveGUI:
             logging.error(f"Error abriendo monitor: {e}")
             messagebox.showerror("❌ Error", f"Error abriendo monitor del sistema:\n{e}")
     
-    # Métodos de funcionalidad (stubs expandidos para mantener estructura)
+    # NUEVAS FUNCIONES PARA GESTIÓN DE VIDEOS
+    def select_videos_for_project(self):
+        """Seleccionar videos para copiar al proyecto"""
+        video_extensions = [
+            ("Videos", "*.mp4 *.avi *.mov *.mkv *.wmv *.flv *.webm *.m4v"),
+            ("MP4", "*.mp4"),
+            ("AVI", "*.avi"),
+            ("MOV", "*.mov"),
+            ("MKV", "*.mkv"),
+            ("Todos los archivos", "*.*")
+        ]
+        
+        selected_videos = filedialog.askopenfilenames(
+            title="Seleccionar Videos para el Proyecto",
+            filetypes=video_extensions,
+            initialdir=os.path.expanduser("~")
+        )
+        
+        return list(selected_videos) if selected_videos else []
+    
+    def get_project_videos_folder(self, project_name):
+        """Obtener la carpeta de videos del proyecto"""
+        project_folder = self.projects_root_dir / project_name
+        videos_folder = project_folder / "Videos"
+        return videos_folder
+    
+    def copy_videos_to_project(self, project_name, videos_list):
+        """Copiar videos al proyecto con ventana de progreso"""
+        if not videos_list:
+            return True
+        
+        try:
+            # Crear carpeta de videos del proyecto
+            videos_folder = self.get_project_videos_folder(project_name)
+            videos_folder.mkdir(parents=True, exist_ok=True)
+            
+            # Mostrar ventana de progreso
+            progress_window = VideoProgressWindow(self, videos_list, videos_folder)
+            
+            # Esperar a que termine la copia
+            self.root.wait_window(progress_window.window)
+            
+            return progress_window.success
+            
+        except Exception as e:
+            logging.error(f"Error configurando copia de videos: {e}")
+            messagebox.showerror("❌ Error", f"Error preparando copia de videos:\n{e}")
+            return False
+    
+    # Métodos de funcionalidad (ACTUALIZADO: create_new_project)
     def create_new_project(self):
-        """Crear nuevo proyecto"""
+        """Crear nuevo proyecto con gestión completa de carpetas y videos"""
+        # Paso 1: Pedir nombre del proyecto
         project_name = simpledialog.askstring("🆕 Nuevo Proyecto", 
                                               "Nombre del proyecto:",
                                               parent=self.root)
-        if project_name:
-            project_name = project_name.strip()
-            if not project_name:
-                messagebox.showwarning("⚠️ Validación", "Ingresa un nombre válido")
+        if not project_name:
+            return
+        
+        project_name = project_name.strip()
+        if not project_name:
+            messagebox.showwarning("⚠️ Validación", "Ingresa un nombre válido")
+            return
+        
+        # Validar que no exista ya
+        if project_name in self.projects_data:
+            messagebox.showwarning("⚠️ Proyecto Existente", "Ya existe un proyecto con ese nombre")
+            return
+        
+        # Validar caracteres permitidos para nombres de carpeta
+        invalid_chars = '<>:"/\\|?*'
+        if any(char in project_name for char in invalid_chars):
+            messagebox.showwarning("⚠️ Caracteres Inválidos", 
+                                 f"El nombre no puede contener: {invalid_chars}")
+            return
+        
+        try:
+            # Paso 2: Crear estructura de carpetas en Proyectos/
+            project_folder = self.projects_root_dir / project_name
+            videos_folder = project_folder / "Videos"
+            
+            # Verificar que no exista la carpeta
+            if project_folder.exists():
+                messagebox.showwarning("⚠️ Carpeta Existente", 
+                                     f"Ya existe una carpeta con el nombre '{project_name}' en:\n{project_folder}")
                 return
             
-            if project_name in self.projects_data:
-                messagebox.showwarning("⚠️ Proyecto Existente", "Ya existe un proyecto con ese nombre")
-                return
+            # Crear estructura de carpetas
+            project_folder.mkdir(parents=True, exist_ok=True)
+            videos_folder.mkdir(parents=True, exist_ok=True)
             
+            self.update_status(f"📁 Carpeta del proyecto creada: {project_folder}")
+            logging.info(f"Estructura de carpetas creada para proyecto: {project_name}")
+            
+            # Paso 3: Preguntar si desea agregar videos ahora
+            add_videos = messagebox.askyesno("🎬 Agregar Videos", 
+                                           f"Proyecto '{project_name}' creado exitosamente.\n\n"
+                                           f"📁 Ubicación: {project_folder}\n\n"
+                                           "¿Deseas seleccionar videos para agregar al proyecto ahora?")
+            
+            videos_list = []
+            if add_videos:
+                # Paso 4: Seleccionar videos
+                self.update_status("🎬 Seleccionando videos...")
+                videos_list = self.select_videos_for_project()
+                
+                if videos_list:
+                    # Mostrar resumen antes de copiar
+                    summary_msg = f"Se van a copiar {len(videos_list)} videos:\n\n"
+                    for i, video in enumerate(videos_list[:5], 1):  # Mostrar solo los primeros 5
+                        video_name = Path(video).name
+                        summary_msg += f"{i}. {video_name}\n"
+                    
+                    if len(videos_list) > 5:
+                        summary_msg += f"... y {len(videos_list) - 5} videos más\n"
+                    
+                    summary_msg += f"\nDestino: {videos_folder}\n\n¿Continuar con la copia?"
+                    
+                    if messagebox.askyesno("📥 Confirmar Copia", summary_msg):
+                        # Paso 5: Copiar videos
+                        self.update_status("📥 Copiando videos al proyecto...")
+                        success = self.copy_videos_to_project(project_name, videos_list)
+                        
+                        if not success:
+                            # Si falló la copia, preguntar si mantener el proyecto
+                            keep_project = messagebox.askyesno("⚠️ Error en Copia", 
+                                                             "Error copiando algunos videos.\n\n"
+                                                             "¿Deseas mantener el proyecto sin los videos?")
+                            if not keep_project:
+                                # Eliminar carpeta del proyecto
+                                try:
+                                    shutil.rmtree(project_folder)
+                                    self.update_status(f"🗑️ Proyecto '{project_name}' eliminado tras error")
+                                except:
+                                    pass
+                                return
+                    else:
+                        videos_list = []  # Usuario canceló la copia
+            
+            # Paso 6: Crear registro del proyecto en la aplicación
             self.projects_data[project_name] = {
                 "name": project_name,
                 "created": datetime.now().isoformat(),
                 "last_modified": datetime.now().isoformat(),
                 "description": "",
-                "videos": [],
+                "videos": [Path(v).name for v in videos_list],  # Solo guardar nombres
+                "project_folder": str(project_folder),
+                "videos_folder": str(videos_folder),
                 "sleap_params": self.sleap_params.copy(),
                 "results": {},
                 "annotations": []
             }
             
+            # Paso 7: Actualizar interfaz
             self.current_project = project_name
             self.project_var.set(project_name)
             self.project_combobox['values'] = list(self.projects_data.keys())
             self.project_indicator.config(text=f"📁 Proyecto activo: {project_name}")
             
+            # Cargar videos en la variable de la aplicación
+            self.loaded_videos = videos_list
+            
+            # Guardar configuración
             self.save_user_projects()
-            self.update_status(f"🆕 Proyecto '{project_name}' creado")
-            messagebox.showinfo("✅ Éxito", f"Proyecto '{project_name}' creado exitosamente")
+            
+            # Mensaje final
+            final_msg = f"✅ Proyecto '{project_name}' creado exitosamente!\n\n"
+            final_msg += f"📁 Ubicación: {project_folder}\n"
+            final_msg += f"🎬 Videos agregados: {len(videos_list)}\n\n"
+            final_msg += "El proyecto está listo para usar."
+            
+            self.update_status(f"🆕 Proyecto '{project_name}' creado con {len(videos_list)} videos")
+            messagebox.showinfo("🎉 Proyecto Creado", final_msg)
+            
+            logging.info(f"Proyecto {project_name} creado exitosamente con {len(videos_list)} videos")
+            
+        except Exception as e:
+            logging.error(f"Error creando proyecto: {e}")
+            messagebox.showerror("❌ Error", f"Error creando proyecto:\n{e}")
+            
+            # Intentar limpiar en caso de error
+            try:
+                if 'project_folder' in locals() and project_folder.exists():
+                    shutil.rmtree(project_folder)
+            except:
+                pass
     
     def load_project(self):
         """Cargar proyecto seleccionado"""
@@ -1817,12 +2209,29 @@ class CinBehaveGUI:
         self.current_project = project_name
         project_data = self.projects_data[project_name]
         
-        self.loaded_videos = project_data.get("videos", [])
+        # Cargar videos (construir rutas completas)
+        videos_folder = self.get_project_videos_folder(project_name)
+        self.loaded_videos = []
+        
+        for video_name in project_data.get("videos", []):
+            video_path = videos_folder / video_name
+            if video_path.exists():
+                self.loaded_videos.append(str(video_path))
+            else:
+                logging.warning(f"Video no encontrado: {video_path}")
+        
         self.sleap_params = project_data.get("sleap_params", self.sleap_params)
         
         self.project_indicator.config(text=f"📁 Proyecto activo: {project_name}")
+        
+        # Mostrar información del proyecto cargado
+        project_info = f"📁 Proyecto: {project_name}\n"
+        project_info += f"🎬 Videos disponibles: {len(self.loaded_videos)}\n"
+        project_info += f"📅 Creado: {project_data.get('created', 'Desconocido')}\n"
+        project_info += f"📂 Ubicación: {project_data.get('project_folder', 'No especificada')}"
+        
         self.update_status(f"📂 Proyecto '{project_name}' cargado")
-        messagebox.showinfo("✅ Éxito", f"Proyecto '{project_name}' cargado exitosamente")
+        messagebox.showinfo("✅ Proyecto Cargado", project_info)
     
     def save_current_project(self):
         """Guardar proyecto actual"""
@@ -1831,7 +2240,7 @@ class CinBehaveGUI:
             return
         
         self.projects_data[self.current_project].update({
-            "videos": self.loaded_videos,
+            "videos": [Path(v).name for v in self.loaded_videos],  # Solo nombres
             "sleap_params": self.sleap_params,
             "last_modified": datetime.now().isoformat()
         })
@@ -1847,21 +2256,50 @@ class CinBehaveGUI:
             messagebox.showwarning("⚠️ Advertencia", "Selecciona un proyecto válido")
             return
         
-        if messagebox.askyesno("🗑️ Confirmar Eliminación", 
-                              f"¿Eliminar el proyecto '{project_name}'?\n\nEsta acción no se puede deshacer."):
-            del self.projects_data[project_name]
-            
-            if self.current_project == project_name:
-                self.current_project = None
-                self.project_indicator.config(text="📁 Sin proyecto activo")
-                self.loaded_videos = []
-            
-            self.project_var.set("")
-            self.project_combobox['values'] = list(self.projects_data.keys())
-            self.save_user_projects()
-            
-            self.update_status(f"🗑️ Proyecto '{project_name}' eliminado")
-            messagebox.showinfo("✅ Eliminado", f"Proyecto '{project_name}' eliminado exitosamente")
+        # Información del proyecto
+        project_data = self.projects_data[project_name]
+        project_folder = Path(project_data.get("project_folder", ""))
+        videos_count = len(project_data.get("videos", []))
+        
+        # Confirmación detallada
+        confirm_msg = f"¿Eliminar el proyecto '{project_name}'?\n\n"
+        confirm_msg += f"📁 Carpeta: {project_folder}\n"
+        confirm_msg += f"🎬 Videos: {videos_count}\n\n"
+        confirm_msg += "ADVERTENCIA: Esto eliminará:\n"
+        confirm_msg += "• El registro del proyecto en CinBehave\n"
+        confirm_msg += "• La carpeta del proyecto y todos sus videos\n"
+        confirm_msg += "• Todos los datos asociados\n\n"
+        confirm_msg += "Esta acción NO se puede deshacer."
+        
+        if messagebox.askyesno("🗑️ Confirmar Eliminación", confirm_msg):
+            try:
+                # Eliminar carpeta física si existe
+                if project_folder.exists():
+                    shutil.rmtree(project_folder)
+                    self.update_status(f"🗑️ Carpeta eliminada: {project_folder}")
+                
+                # Eliminar registro del proyecto
+                del self.projects_data[project_name]
+                
+                # Limpiar interfaz si era el proyecto activo
+                if self.current_project == project_name:
+                    self.current_project = None
+                    self.project_indicator.config(text="📁 Sin proyecto activo")
+                    self.loaded_videos = []
+                
+                # Actualizar combobox
+                self.project_var.set("")
+                self.project_combobox['values'] = list(self.projects_data.keys())
+                self.save_user_projects()
+                
+                self.update_status(f"🗑️ Proyecto '{project_name}' eliminado completamente")
+                messagebox.showinfo("✅ Eliminado", f"Proyecto '{project_name}' eliminado exitosamente")
+                
+                logging.info(f"Proyecto {project_name} eliminado completamente")
+                
+            except Exception as e:
+                logging.error(f"Error eliminando proyecto: {e}")
+                messagebox.showerror("❌ Error", f"Error eliminando proyecto:\n{e}")
     
     def open_predict_menu(self):
         """Abrir menú de predicción completo"""
@@ -1873,7 +2311,13 @@ class CinBehaveGUI:
             else:
                 return
         
-        messagebox.showinfo("🎬 Predicción", "Menú de predicción completo - En desarrollo\n\nIncluirá:\n• Carga de videos\n• Procesamiento SLEAP\n• Análisis de resultados\n• Anotaciones manuales")
+        # Mostrar información del proyecto actual
+        project_info = f"Proyecto actual: {self.current_project}\n"
+        project_info += f"Videos disponibles: {len(self.loaded_videos)}\n"
+        if self.loaded_videos:
+            project_info += f"Ubicación: {self.get_project_videos_folder(self.current_project)}"
+        
+        messagebox.showinfo("🎬 Predicción", f"Menú de predicción completo - En desarrollo\n\n{project_info}\n\nIncluirá:\n• Carga de videos\n• Procesamiento SLEAP\n• Análisis de resultados\n• Anotaciones manuales")
     
     def show_training_menu(self):
         """Mostrar menú de entrenamiento"""
@@ -1912,6 +2356,7 @@ usando tecnología de Machine Learning con SLEAP.
 🐍 Python: {sys.version_info.major}.{sys.version_info.minor}
 👤 Usuario: {self.current_user}
 📊 Monitor: {'Disponible' if MATPLOTLIB_AVAILABLE else 'Limitado'}
+📁 Proyectos: {self.projects_root_dir}
 
 © 2024 CinBehave Project
 Desarrollado con ❤️ para la comunidad científica
