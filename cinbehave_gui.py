@@ -41,6 +41,177 @@ logging.basicConfig(
     ]
 )
 
+class TutorialSystem:
+    """Sistema de tutorial para CinBehave"""
+    def __init__(self, parent):
+        self.parent = parent
+        self.tutorial_enabled = True
+        self.current_user = None
+        
+    def load_tutorial_state(self, username):
+        """Cargar estado del tutorial para el usuario"""
+        self.current_user = username
+        user_dir = Path("users") / username
+        tutorial_file = user_dir / "tutorial_state.json"
+        
+        if tutorial_file.exists():
+            try:
+                with open(tutorial_file, 'r') as f:
+                    state = json.load(f)
+                return state
+            except:
+                pass
+        
+        # Estado por defecto para nuevo usuario
+        return {
+            "user_creation_shown": False,
+            "project_management_shown": False,
+            "video_selection_shown": False,
+            "monitor_explained": False,
+            "tutorial_completed": False
+        }
+    
+    def save_tutorial_state(self, state):
+        """Guardar estado del tutorial"""
+        if not self.current_user:
+            return
+            
+        user_dir = Path("users") / self.current_user
+        tutorial_file = user_dir / "tutorial_state.json"
+        
+        try:
+            with open(tutorial_file, 'w') as f:
+                json.dump(state, f, indent=2)
+        except Exception as e:
+            logging.error(f"Error guardando estado tutorial: {e}")
+    
+    def reset_tutorial(self, username=None):
+        """Resetear tutorial para mostrar todo de nuevo"""
+        if username:
+            self.current_user = username
+        
+        state = {
+            "user_creation_shown": False,
+            "project_management_shown": False,
+            "video_selection_shown": False,
+            "monitor_explained": False,
+            "tutorial_completed": False
+        }
+        self.save_tutorial_state(state)
+        self.tutorial_enabled = True
+    
+    def show_tutorial_window(self, title, message, step_info=""):
+        """Mostrar ventana de tutorial con diseño elegante"""
+        if not self.tutorial_enabled:
+            return True
+        
+        # Crear ventana
+        tutorial_window = tk.Toplevel(self.parent.root)
+        tutorial_window.title(f"🎓 Tutorial CinBehave - {title}")
+        tutorial_window.geometry("700x500")
+        tutorial_window.configure(bg=ModernColors.PRIMARY_DARK)
+        tutorial_window.resizable(False, False)
+        tutorial_window.transient(self.parent.root)
+        tutorial_window.grab_set()
+        
+        # Centrar ventana
+        tutorial_window.update_idletasks()
+        x = (tutorial_window.winfo_screenwidth() // 2) - (350)
+        y = (tutorial_window.winfo_screenheight() // 2) - (250)
+        tutorial_window.geometry(f"700x500+{x}+{y}")
+        
+        # Variable para resultado
+        result = {"continue": True}
+        
+        # Header con gradiente
+        header_frame = tk.Frame(tutorial_window, bg=ModernColors.ACCENT_PURPLE, height=100)
+        header_frame.pack(fill="x")
+        header_frame.pack_propagate(False)
+        
+        # Icono y título del header
+        header_container = tk.Frame(header_frame, bg=ModernColors.ACCENT_PURPLE)
+        header_container.pack(fill="both", expand=True, padx=30, pady=20)
+        
+        # Icono
+        icon_frame = tk.Frame(header_container, bg=ModernColors.TEXT_PRIMARY, width=60, height=60)
+        icon_frame.pack(side="left", pady=10, padx=(0, 20))
+        icon_frame.pack_propagate(False)
+        
+        tk.Label(icon_frame, text="🎓", font=("Segoe UI", 24), 
+                bg=ModernColors.TEXT_PRIMARY, fg=ModernColors.ACCENT_PURPLE).pack(expand=True)
+        
+        # Títulos
+        titles_frame = tk.Frame(header_container, bg=ModernColors.ACCENT_PURPLE)
+        titles_frame.pack(side="left", fill="y")
+        
+        tk.Label(titles_frame, text=f"Tutorial: {title}", 
+                font=("Segoe UI", 18, "bold"), 
+                fg=ModernColors.TEXT_PRIMARY, 
+                bg=ModernColors.ACCENT_PURPLE).pack(anchor="w")
+        
+        if step_info:
+            tk.Label(titles_frame, text=step_info, 
+                    font=("Segoe UI", 11), 
+                    fg=ModernColors.TEXT_PRIMARY, 
+                    bg=ModernColors.ACCENT_PURPLE).pack(anchor="w")
+        
+        # Contenido principal
+        content_frame = tk.Frame(tutorial_window, bg=ModernColors.PRIMARY_DARK)
+        content_frame.pack(fill="both", expand=True, padx=40, pady=30)
+        
+        # Mensaje principal
+        message_frame = tk.Frame(content_frame, bg=ModernColors.CARD_BG, relief="solid", bd=1)
+        message_frame.pack(fill="both", expand=True, pady=(0, 20))
+        
+        # Padding interno del mensaje
+        message_container = tk.Frame(message_frame, bg=ModernColors.CARD_BG)
+        message_container.pack(fill="both", expand=True, padx=30, pady=30)
+        
+        message_label = tk.Label(message_container, text=message,
+                                font=("Segoe UI", 12),
+                                fg=ModernColors.TEXT_PRIMARY,
+                                bg=ModernColors.CARD_BG,
+                                wraplength=600,
+                                justify="left")
+        message_label.pack(expand=True)
+        
+        # Botones
+        buttons_frame = tk.Frame(content_frame, bg=ModernColors.PRIMARY_DARK)
+        buttons_frame.pack(fill="x")
+        
+        def on_skip():
+            result["continue"] = False
+            self.tutorial_enabled = False
+            tutorial_window.destroy()
+        
+        def on_next():
+            result["continue"] = True
+            tutorial_window.destroy()
+        
+        # Botón Omitir Tutorial
+        skip_button = tk.Button(buttons_frame, text="⏭️ Omitir Tutorial", 
+                               command=on_skip,
+                               font=("Segoe UI", 11, "bold"),
+                               fg=ModernColors.TEXT_PRIMARY,
+                               bg=ModernColors.ACCENT_RED,
+                               activebackground="#f25255",
+                               relief="flat", padx=20, pady=12)
+        skip_button.pack(side="left")
+        
+        # Botón Siguiente
+        next_button = tk.Button(buttons_frame, text="▶️ Siguiente", 
+                               command=on_next,
+                               font=("Segoe UI", 11, "bold"),
+                               fg=ModernColors.TEXT_PRIMARY,
+                               bg=ModernColors.ACCENT_GREEN,
+                               activebackground="#67f297",
+                               relief="flat", padx=20, pady=12)
+        next_button.pack(side="right")
+        
+        # Esperar resultado
+        tutorial_window.wait_window()
+        return result["continue"]
+
 class ModernColors:
     """Paleta de colores moderna y atractiva"""
     # Colores principales
@@ -164,8 +335,8 @@ class VideoProgressWindow:
         progress_container = tk.Frame(progress_frame, bg=ModernColors.CARD_BG)
         progress_container.pack(fill="x", padx=20, pady=10)
         
-        self.progress_bar = ttk.Progressbar(progress_container, mode='determinate', 
-                                           length=500, style='Modern.TProgressbar')
+        # Usar estilo por defecto para evitar errores
+        self.progress_bar = ttk.Progressbar(progress_container, mode='determinate', length=500)
         self.progress_bar.pack(fill="x")
         self.progress_bar['maximum'] = self.total_videos
         
@@ -975,6 +1146,9 @@ class CinBehaveGUI:
         # NUEVA VARIABLE: Directorio principal de proyectos
         self.projects_root_dir = Path.cwd() / "Proyectos"
         
+        # NUEVO: Sistema de tutorial
+        self.tutorial = TutorialSystem(self)
+        
         # Configurar fuentes modernas
         self.fonts = {
             'title': ('Segoe UI', 24, 'bold'),
@@ -1004,47 +1178,78 @@ class CinBehaveGUI:
         try:
             style.theme_use('winnative')
         except:
-            style.theme_use('default')
+            try:
+                style.theme_use('default')
+            except:
+                pass  # Usar el tema por defecto del sistema
         
-        # Configurar colores modernos para ttk
-        style.configure('Modern.TLabel', 
-                       background=ModernColors.PRIMARY_DARK, 
-                       foreground=ModernColors.TEXT_PRIMARY,
-                       font=self.fonts['normal'])
+        # Configurar colores modernos para ttk de manera segura
+        try:
+            style.configure('Modern.TLabel', 
+                           background=ModernColors.PRIMARY_DARK, 
+                           foreground=ModernColors.TEXT_PRIMARY,
+                           font=self.fonts['normal'])
+        except:
+            pass
         
-        style.configure('Modern.TButton', 
-                       background=ModernColors.ACCENT_BLUE,
-                       foreground=ModernColors.TEXT_PRIMARY,
-                       font=self.fonts['button'],
-                       relief='flat')
+        try:
+            style.configure('Modern.TButton', 
+                           background=ModernColors.ACCENT_BLUE,
+                           foreground=ModernColors.TEXT_PRIMARY,
+                           font=self.fonts['button'],
+                           relief='flat')
+        except:
+            pass
         
-        style.configure('Modern.TEntry', 
-                       fieldbackground=ModernColors.CARD_BG,
-                       foreground=ModernColors.TEXT_PRIMARY,
-                       borderwidth=0,
-                       relief='flat')
+        try:
+            style.configure('Modern.TEntry', 
+                           fieldbackground=ModernColors.CARD_BG,
+                           foreground=ModernColors.TEXT_PRIMARY,
+                           borderwidth=0,
+                           relief='flat')
+        except:
+            pass
         
-        style.configure('Modern.TCombobox', 
-                       fieldbackground=ModernColors.CARD_BG,
-                       foreground=ModernColors.TEXT_PRIMARY)
+        try:
+            style.configure('Modern.TCombobox', 
+                           fieldbackground=ModernColors.CARD_BG,
+                           foreground=ModernColors.TEXT_PRIMARY)
+        except:
+            pass
         
-        style.configure('Modern.TProgressbar', 
-                       background=ModernColors.ACCENT_GREEN,
-                       troughcolor=ModernColors.PRIMARY_LIGHT)
+        try:
+            # Configurar progressbar de manera más segura
+            style.configure('TProgressbar', 
+                           background=ModernColors.ACCENT_GREEN,
+                           troughcolor=ModernColors.PRIMARY_LIGHT,
+                           borderwidth=0,
+                           lightcolor=ModernColors.ACCENT_GREEN,
+                           darkcolor=ModernColors.ACCENT_GREEN)
+        except:
+            pass
         
-        style.configure('Modern.TNotebook', 
-                       background=ModernColors.PRIMARY_DARK,
-                       borderwidth=0)
+        try:
+            style.configure('Modern.TNotebook', 
+                           background=ModernColors.PRIMARY_DARK,
+                           borderwidth=0)
+        except:
+            pass
         
-        style.configure('Modern.TNotebook.Tab', 
-                       background=ModernColors.PRIMARY_LIGHT,
-                       foreground=ModernColors.TEXT_SECONDARY,
-                       padding=[20, 10],
-                       font=self.fonts['normal'])
+        try:
+            style.configure('Modern.TNotebook.Tab', 
+                           background=ModernColors.PRIMARY_LIGHT,
+                           foreground=ModernColors.TEXT_SECONDARY,
+                           padding=[20, 10],
+                           font=self.fonts['normal'])
+        except:
+            pass
         
-        style.map('Modern.TNotebook.Tab',
-                 background=[('selected', ModernColors.ACCENT_BLUE)],
-                 foreground=[('selected', ModernColors.TEXT_PRIMARY)])
+        try:
+            style.map('Modern.TNotebook.Tab',
+                     background=[('selected', ModernColors.ACCENT_BLUE)],
+                     foreground=[('selected', ModernColors.TEXT_PRIMARY)])
+        except:
+            pass
     
     def create_modern_button(self, parent, text, command, color=None, **kwargs):
         """Crear botón moderno con efectos"""
@@ -1270,6 +1475,9 @@ class CinBehaveGUI:
     
     def show_user_selection(self):
         """Mostrar selección de usuario con diseño moderno y BOTÓN VISIBLE"""
+        # NUEVO: Mostrar tutorial de usuario ANTES de crear la ventana
+        self.show_user_creation_tutorial()
+        
         self.root.withdraw()
         
         self.user_window = tk.Toplevel()
@@ -1440,6 +1648,12 @@ class CinBehaveGUI:
                                                  ModernColors.ACCENT_PURPLE)
         create_button.pack(expand=True, fill="both", padx=10, pady=10)
         
+        # NUEVO: Botón alternativo más visible
+        create_button_alt = self.create_modern_button(form_container, "✅ Crear Usuario", 
+                                                     self.create_new_user, 
+                                                     ModernColors.ACCENT_GREEN)
+        create_button_alt.pack(fill="x", pady=(10, 0))
+        
         # Footer con información del sistema
         footer_frame = tk.Frame(self.user_window, bg=ModernColors.PRIMARY_MEDIUM, height=70)
         footer_frame.pack(fill="x", side="bottom")
@@ -1531,6 +1745,12 @@ class CinBehaveGUI:
             parts = selected_text.split('\n')[0]  # Primera línea
             self.current_user = parts.replace('👤 ', '').strip()
         
+        # NUEVO: Cargar estado del tutorial para verificar si necesita tutorial
+        tutorial_state = self.tutorial.load_tutorial_state(self.current_user)
+        if not tutorial_state.get("project_management_shown", False):
+            # Es un usuario que nunca ha visto el tutorial de proyectos
+            pass  # El tutorial se mostrará en setup_user_environment
+        
         self.setup_user_environment()
     
     def create_new_user(self):
@@ -1585,6 +1805,10 @@ class CinBehaveGUI:
                 json.dump(user_info, f, indent=2)
             
             self.current_user = username
+            
+            # NUEVO: Inicializar estado del tutorial para nuevo usuario
+            self.tutorial.current_user = username
+            
             self.setup_user_environment()
             
             logging.info(f"Usuario {username} creado exitosamente")
@@ -1599,6 +1823,9 @@ class CinBehaveGUI:
             self.setup_directories()
             self.load_user_projects()
             self.update_last_login()
+            
+            # NUEVO: Cargar estado del tutorial para este usuario
+            self.tutorial.load_tutorial_state(self.current_user)
             
             self.user_window.destroy()
             self.root.deiconify()
@@ -1735,6 +1962,8 @@ class CinBehaveGUI:
         # Menú Ayuda
         help_menu = tk.Menu(menubar, tearoff=0, bg=ModernColors.CARD_BG, fg=ModernColors.TEXT_PRIMARY)
         menubar.add_cascade(label="❓ Ayuda", menu=help_menu)
+        help_menu.add_command(label="🎓 Tutorial", command=self.restart_tutorial)
+        help_menu.add_separator()
         help_menu.add_command(label="📖 Documentación", command=self.show_documentation)
         help_menu.add_command(label="🆘 Soporte", command=self.show_support)
         help_menu.add_command(label="ℹ️ Acerca de", command=self.show_about)
@@ -2006,11 +2235,189 @@ class CinBehaveGUI:
     def show_system_monitor(self):
         """Mostrar monitor del sistema funcional y completamente operativo"""
         try:
+            # NUEVO: Mostrar tutorial del monitor si es la primera vez
+            self.show_monitor_tutorial()
+            
             monitor = SystemMonitorWindow(self)
             self.update_status("📊 Monitor de sistema iniciado correctamente")
         except Exception as e:
             logging.error(f"Error abriendo monitor: {e}")
             messagebox.showerror("❌ Error", f"Error abriendo monitor del sistema:\n{e}")
+    
+    # NUEVAS FUNCIONES DEL SISTEMA DE TUTORIAL
+    def show_user_creation_tutorial(self):
+        """Tutorial: Explicación de creación de usuarios"""
+        message = """¡Bienvenido a CinBehave! 🎉
+
+CinBehave es un sistema avanzado de análisis de comportamiento animal usando tecnología SLEAP.
+
+📋 CREACIÓN DE USUARIO:
+• Cada usuario tiene su propio espacio de trabajo independiente
+• Sus proyectos y configuraciones se guardan por separado
+• Puede crear múltiples usuarios para diferentes investigadores
+
+🚀 PRIMEROS PASOS:
+1. Ingrese un nombre de usuario (mínimo 3 caracteres)
+2. Opcionalmente, agregue su nombre completo y email
+3. Haga clic en "Crear Usuario" o presione Enter
+4. ¡Su espacio de trabajo estará listo!
+
+💡 CONSEJO: Use nombres descriptivos como "Dr_Rodriguez" o "Lab_Neurociencias" """
+
+        if self.tutorial.show_tutorial_window("Creación de Usuarios", message, "Paso 1/4 - Configuración inicial"):
+            return True
+        return False
+    
+    def show_project_management_tutorial(self):
+        """Tutorial: Explicación de gestión de proyectos"""
+        state = self.tutorial.load_tutorial_state(self.current_user)
+        if state.get("project_management_shown", False):
+            return
+        
+        message = """¡Excelente! Ya tienes tu espacio de trabajo configurado. 👨‍💻
+
+📋 GESTIÓN DE PROYECTOS:
+Los proyectos son el corazón de CinBehave. Aquí organizas todos tus análisis.
+
+🆕 CREAR PROYECTO:
+• Haga clic en "🆕 Nuevo" para crear un proyecto
+• Se creará automáticamente una carpeta en "Proyectos/[NombreProyecto]/Videos/"
+• Podrá agregar videos inmediatamente
+
+📂 CARGAR PROYECTO:
+• Seleccione un proyecto del menú desplegable
+• Haga clic en "📂 Cargar" para trabajar con él
+
+💾 GUARDAR PROYECTO:
+• Sus cambios se guardan automáticamente
+• Use "💾 Guardar" para guardar manualmente
+
+🗑️ ELIMINAR PROYECTO:
+• Seleccione el proyecto y haga clic en "🗑️ Eliminar"
+• Se eliminará la carpeta completa y todos los archivos
+
+💡 CONSEJO: Use nombres descriptivos como "Ratones_Laberinto_2024" """
+
+        if self.tutorial.show_tutorial_window("Gestión de Proyectos", message, "Paso 2/4 - Organización"):
+            state["project_management_shown"] = True
+            self.tutorial.save_tutorial_state(state)
+    
+    def show_video_selection_tutorial(self):
+        """Tutorial: Explicación de selección de videos"""
+        state = self.tutorial.load_tutorial_state(self.current_user)
+        if state.get("video_selection_shown", False):
+            return
+        
+        message = """¡Perfecto! Ahora vamos a agregar videos a tu proyecto. 🎬
+
+📁 SELECCIÓN DE VIDEOS:
+Los videos son el material principal para el análisis con SLEAP.
+
+🎯 PROCESO AUTOMÁTICO:
+• Seleccione videos desde cualquier ubicación de su computadora
+• CinBehave los copiará automáticamente a la carpeta del proyecto
+• Los videos originales permanecen intactos en su ubicación original
+
+📹 FORMATOS SOPORTADOS:
+• MP4, AVI, MOV, MKV, WMV, FLV, WEBM, M4V
+• Todos los formatos comunes de video están incluidos
+
+⚡ VENTAJAS:
+• Videos organizados automáticamente por proyecto
+• Fácil acceso y gestión
+• Respaldo seguro en la carpeta del proyecto
+• No perderá sus videos nunca más
+
+🔄 PROCESO:
+1. Se abrirá un selector de archivos
+2. Seleccione uno o múltiples videos (Ctrl+clic)
+3. Confirme la selección
+4. Vea el progreso de copia en tiempo real
+
+💡 CONSEJO: Organice sus videos por sesiones o condiciones experimentales"""
+
+        if self.tutorial.show_tutorial_window("Selección de Videos", message, "Paso 3/4 - Videos de análisis"):
+            state["video_selection_shown"] = True
+            self.tutorial.save_tutorial_state(state)
+    
+    def show_monitor_tutorial(self):
+        """Tutorial: Explicación del monitor de recursos"""
+        state = self.tutorial.load_tutorial_state(self.current_user)
+        if state.get("monitor_explained", False):
+            return
+        
+        message = """¡Excelente! Está abriendo el Monitor de Recursos del Sistema. 📊
+
+🖥️ MONITOR EN TIEMPO REAL:
+Esta herramienta le permite supervisar el rendimiento de su computadora durante los análisis.
+
+📈 INFORMACIÓN DISPONIBLE:
+• CPU: Uso del procesador en tiempo real
+• Memoria: Consumo de RAM del sistema
+• Disco: Espacio y actividad de almacenamiento
+• Red: Transferencia de datos de internet
+• Temperatura: Temperatura del sistema (si está disponible)
+• GPU: Estado de la tarjeta gráfica
+• Procesos: Cantidad de programas ejecutándose
+
+⚡ CARACTERÍSTICAS:
+• Gráficos en tiempo real con matplotlib
+• Exportación de datos a CSV
+• Historial de 60 segundos de datos
+• Interfaz moderna y fácil de usar
+
+🎯 ¿POR QUÉ ES ÚTIL?
+• Verificar que su computadora puede manejar análisis pesados
+• Detectar problemas de rendimiento
+• Optimizar configuraciones de SLEAP
+• Monitorear progreso de procesamientos largos
+
+💡 CONSEJO: Mantenga el monitor abierto durante análisis extensos para verificar el rendimiento"""
+
+        if self.tutorial.show_tutorial_window("Monitor de Recursos", message, "Paso 4/4 - Monitoreo del sistema"):
+            state["monitor_explained"] = True
+            state["tutorial_completed"] = True
+            self.tutorial.save_tutorial_state(state)
+    
+    def restart_tutorial(self):
+        """Reiniciar tutorial completo"""
+        if messagebox.askyesno("🎓 Reiniciar Tutorial", 
+                              "¿Desea reiniciar el tutorial completo?\n\n"
+                              "Esto volverá a mostrar todas las ventanas explicativas "
+                              "como si fuera la primera vez usando CinBehave."):
+            if self.current_user:
+                self.tutorial.reset_tutorial(self.current_user)
+                messagebox.showinfo("✅ Tutorial Reiniciado", 
+                                   "El tutorial ha sido reiniciado.\n\n"
+                                   "Las ventanas explicativas volverán a aparecer "
+                                   "cuando realice las acciones correspondientes.")
+                self.update_status("🎓 Tutorial reiniciado")
+            else:
+                messagebox.showwarning("⚠️ Sin Usuario", "Debe tener un usuario activo para reiniciar el tutorial")
+    
+    def setup_user_environment(self):
+        """Configurar entorno completo del usuario"""
+        try:
+            self.setup_directories()
+            self.load_user_projects()
+            self.update_last_login()
+            
+            self.user_window.destroy()
+            self.root.deiconify()
+            self.create_main_interface()
+            
+            # NUEVO: Mostrar tutorial de gestión de proyectos
+            self.show_project_management_tutorial()
+            
+            user_info = self.get_user_info()
+            welcome_msg = f"¡Bienvenido de vuelta, {user_info.get('full_name', self.current_user)}! 🎉\n\n✅ Sistema listo para análisis\n📊 Monitor de recursos disponible\n🎬 Funciones de predicción preparadas"
+            messagebox.showinfo("🎯 Bienvenido", welcome_msg)
+            
+            logging.info(f"Usuario {self.current_user} iniciado correctamente")
+            
+        except Exception as e:
+            logging.error(f"Error configurando entorno: {e}")
+            messagebox.showerror("❌ Error", f"Error configurando entorno: {e}")
     
     # NUEVAS FUNCIONES PARA GESTIÓN DE VIDEOS
     def select_videos_for_project(self):
@@ -2114,6 +2521,9 @@ class CinBehaveGUI:
             
             videos_list = []
             if add_videos:
+                # NUEVO: Mostrar tutorial de selección de videos
+                self.show_video_selection_tutorial()
+                
                 # Paso 4: Seleccionar videos
                 self.update_status("🎬 Seleccionando videos...")
                 videos_list = self.select_videos_for_project()
