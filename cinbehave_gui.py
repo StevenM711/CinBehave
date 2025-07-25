@@ -105,20 +105,21 @@ class TutorialSystem:
         if not self.tutorial_enabled:
             return True
         
-        # Crear ventana
+        # Crear ventana más grande
         tutorial_window = tk.Toplevel(self.parent.root)
         tutorial_window.title(f"🎓 Tutorial CinBehave - {title}")
-        tutorial_window.geometry("700x500")
+        tutorial_window.geometry("900x700")  # Aumentado de 700x500 a 900x700
         tutorial_window.configure(bg=ModernColors.PRIMARY_DARK)
-        tutorial_window.resizable(False, False)
+        tutorial_window.resizable(True, True)  # Permitir redimensionar
+        tutorial_window.minsize(800, 600)  # Tamaño mínimo
         tutorial_window.transient(self.parent.root)
         tutorial_window.grab_set()
         
         # Centrar ventana
         tutorial_window.update_idletasks()
-        x = (tutorial_window.winfo_screenwidth() // 2) - (350)
-        y = (tutorial_window.winfo_screenheight() // 2) - (250)
-        tutorial_window.geometry(f"700x500+{x}+{y}")
+        x = (tutorial_window.winfo_screenwidth() // 2) - (450)  # Ajustado para nueva anchura
+        y = (tutorial_window.winfo_screenheight() // 2) - (350)  # Ajustado para nueva altura
+        tutorial_window.geometry(f"900x700+{x}+{y}")
         
         # Variable para resultado
         result = {"continue": True}
@@ -159,25 +160,49 @@ class TutorialSystem:
         content_frame = tk.Frame(tutorial_window, bg=ModernColors.PRIMARY_DARK)
         content_frame.pack(fill="both", expand=True, padx=40, pady=30)
         
-        # Mensaje principal
+        # Marco del mensaje con scrollbar
         message_frame = tk.Frame(content_frame, bg=ModernColors.CARD_BG, relief="solid", bd=1)
         message_frame.pack(fill="both", expand=True, pady=(0, 20))
         
-        # Padding interno del mensaje
-        message_container = tk.Frame(message_frame, bg=ModernColors.CARD_BG)
-        message_container.pack(fill="both", expand=True, padx=30, pady=30)
+        # Container para el contenido scrolleable
+        scroll_container = tk.Frame(message_frame, bg=ModernColors.CARD_BG)
+        scroll_container.pack(fill="both", expand=True, padx=5, pady=5)
         
-        message_label = tk.Label(message_container, text=message,
-                                font=("Segoe UI", 12),
-                                fg=ModernColors.TEXT_PRIMARY,
-                                bg=ModernColors.CARD_BG,
-                                wraplength=600,
-                                justify="left")
-        message_label.pack(expand=True)
+        # Crear scrollbar
+        scrollbar = tk.Scrollbar(scroll_container, bg=ModernColors.PRIMARY_LIGHT, 
+                                troughcolor=ModernColors.PRIMARY_DARK,
+                                activebackground=ModernColors.ACCENT_PURPLE)
+        scrollbar.pack(side="right", fill="y")
         
-        # Botones
-        buttons_frame = tk.Frame(content_frame, bg=ModernColors.PRIMARY_DARK)
+        # Área de texto con scrollbar
+        text_area = tk.Text(scroll_container, 
+                           bg=ModernColors.CARD_BG,
+                           fg=ModernColors.TEXT_PRIMARY,
+                           font=("Segoe UI", 13),  # Fuente un poco más grande
+                           wrap="word",
+                           yscrollcommand=scrollbar.set,
+                           relief="flat",
+                           bd=0,
+                           padx=25,
+                           pady=25,
+                           selectbackground=ModernColors.ACCENT_PURPLE,
+                           selectforeground=ModernColors.TEXT_PRIMARY,
+                           insertbackground=ModernColors.TEXT_PRIMARY,
+                           cursor="arrow")  # Cursor de flecha para indicar que es solo lectura
+        
+        text_area.pack(side="left", fill="both", expand=True)
+        
+        # Configurar scrollbar
+        scrollbar.config(command=text_area.yview)
+        
+        # Insertar mensaje y hacer readonly
+        text_area.insert(1.0, message)
+        text_area.config(state="disabled")  # Solo lectura
+        
+        # Botones más espaciados
+        buttons_frame = tk.Frame(content_frame, bg=ModernColors.PRIMARY_DARK, height=70)
         buttons_frame.pack(fill="x")
+        buttons_frame.pack_propagate(False)
         
         def on_skip():
             result["continue"] = False
@@ -188,25 +213,56 @@ class TutorialSystem:
             result["continue"] = True
             tutorial_window.destroy()
         
+        # Container para centrar botones
+        buttons_container = tk.Frame(buttons_frame, bg=ModernColors.PRIMARY_DARK)
+        buttons_container.pack(expand=True, fill="both")
+        
         # Botón Omitir Tutorial
-        skip_button = tk.Button(buttons_frame, text="⏭️ Omitir Tutorial", 
+        skip_button = tk.Button(buttons_container, text="⏭️ Omitir Tutorial", 
                                command=on_skip,
-                               font=("Segoe UI", 11, "bold"),
+                               font=("Segoe UI", 12, "bold"),  # Fuente más grande
                                fg=ModernColors.TEXT_PRIMARY,
                                bg=ModernColors.ACCENT_RED,
                                activebackground="#f25255",
-                               relief="flat", padx=20, pady=12)
-        skip_button.pack(side="left")
+                               relief="flat", padx=25, pady=15)  # Botones más grandes
+        skip_button.pack(side="left", padx=20, pady=15)
         
         # Botón Siguiente
-        next_button = tk.Button(buttons_frame, text="▶️ Siguiente", 
+        next_button = tk.Button(buttons_container, text="▶️ Siguiente", 
                                command=on_next,
-                               font=("Segoe UI", 11, "bold"),
+                               font=("Segoe UI", 12, "bold"),  # Fuente más grande
                                fg=ModernColors.TEXT_PRIMARY,
                                bg=ModernColors.ACCENT_GREEN,
                                activebackground="#67f297",
-                               relief="flat", padx=20, pady=12)
-        next_button.pack(side="right")
+                               relief="flat", padx=25, pady=15)  # Botones más grandes
+        next_button.pack(side="right", padx=20, pady=15)
+        
+        # Efectos hover para botones
+        def on_enter_skip(e):
+            skip_button.configure(bg="#f25255")
+        def on_leave_skip(e):
+            skip_button.configure(bg=ModernColors.ACCENT_RED)
+        def on_enter_next(e):
+            next_button.configure(bg="#67f297")
+        def on_leave_next(e):
+            next_button.configure(bg=ModernColors.ACCENT_GREEN)
+        
+        skip_button.bind("<Enter>", on_enter_skip)
+        skip_button.bind("<Leave>", on_leave_skip)
+        next_button.bind("<Enter>", on_enter_next)
+        next_button.bind("<Leave>", on_leave_next)
+        
+        # Hacer foco en botón siguiente por defecto
+        next_button.focus_set()
+        
+        # Atajos de teclado
+        def on_key(event):
+            if event.keysym == "Return" or event.keysym == "space":
+                on_next()
+            elif event.keysym == "Escape":
+                on_skip()
+        
+        tutorial_window.bind("<KeyPress>", on_key)
         
         # Esperar resultado
         tutorial_window.wait_window()
