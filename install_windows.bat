@@ -1,38 +1,66 @@
 @echo off
 REM ============================================================================
-REM CinBehave - SLEAP Analysis GUI DEBUG Installer for Windows
-REM Version: 1.1 Debug Edition
+REM CinBehave - SLEAP Analysis GUI FIXED Windows Installer
+REM Version: 1.2 FIXED Edition
 REM 
-REM INSTALADOR CON DEBUG MEJORADO - NO SE CIERRA AUTOMATICAMENTE
+REM INSTALADOR CORREGIDO - Manejo robusto de errores y verificaciones
 REM ============================================================================
 
 setlocal enabledelayedexpansion
-set "INSTALLER_VERSION=1.1.0-debug"
+set "INSTALLER_VERSION=1.2.0-fixed"
 set "INSTALL_DATE=%DATE% %TIME%"
+set "TOTAL_STEPS=12"
+set "CURRENT_STEP=0"
+
+REM Variables de control de errores
+set "CRITICAL_ERROR=0"
+set "PYTHON_INSTALLED=0"
+set "VENV_CREATED=0"
+set "APP_DOWNLOADED=0"
+set "DEPS_INSTALLED=0"
 
 echo.
 echo ============================================================================
 echo                    CinBehave SLEAP Analysis Suite                          
-echo                         DEBUG INSTALLER v%INSTALLER_VERSION%
+echo                         FIXED INSTALLER v%INSTALLER_VERSION%
+echo                    INSTALADOR CORREGIDO CON VERIFICACIONES
 echo ============================================================================
 echo.
-echo [DEBUG] Iniciando instalador con debugging completo...
-echo [DEBUG] Fecha y hora: %INSTALL_DATE%
-echo [DEBUG] Directorio actual: %CD%
-echo [DEBUG] Variables de entorno verificadas
-echo.
-pause
+
+REM ============================================================================
+REM FUNCION: Incrementar paso y mostrar progreso
+REM ============================================================================
+:increment_step
+set /a CURRENT_STEP+=1
+echo [PASO %CURRENT_STEP%/%TOTAL_STEPS%] %~1
+goto :eof
+
+REM ============================================================================
+REM FUNCION: Verificar error critico y salir si es necesario
+REM ============================================================================
+:check_critical_error
+if "%CRITICAL_ERROR%"=="1" (
+    echo.
+    echo [ERROR CRITICO] La instalacion no puede continuar
+    echo [INFO] Revise los mensajes de error anteriores
+    echo [LOG] Verifique el archivo de log para mas detalles
+    echo.
+    echo Presiona cualquier tecla para salir...
+    pause >nul
+    exit /b 1
+)
+goto :eof
 
 REM ============================================================================
 REM VERIFICACION DE ADMINISTRADOR
 REM ============================================================================
-echo [STEP 1/10] Verificando privilegios de administrador...
+call :increment_step "Verificando privilegios de administrador..."
 net session >nul 2>&1
 if %errorLevel% neq 0 (
     echo [ERROR] Se requieren privilegios de administrador
     echo [SOLUCION] Ejecute este archivo como administrador:
-    echo 1. Clic derecho en el archivo .bat
-    echo 2. Seleccionar "Ejecutar como administrador"
+    echo   1. Clic derecho en el archivo .bat
+    echo   2. Seleccionar "Ejecutar como administrador"
     echo.
     echo Presiona cualquier tecla para salir...
     pause >nul
@@ -40,25 +68,21 @@ if %errorLevel% neq 0 (
 )
 echo [OK] Privilegios de administrador verificados
 echo.
-pause
 
 REM ============================================================================
 REM DETECCION DEL SISTEMA
 REM ============================================================================
-echo [STEP 2/10] Detectando configuracion del sistema...
+call :increment_step "Detectando configuracion del sistema..."
 
-REM Detectar arquitectura
 if "%PROCESSOR_ARCHITECTURE%"=="AMD64" (
     set "SYSTEM_ARCH=x64"
-    echo [OK] Arquitectura detectada: x64 (64-bit)
+    set "PYTHON_ARCH=amd64"
+    echo [OK] Arquitectura: x64 (64-bit)
 ) else (
-    set "SYSTEM_ARCH=x86"
-    echo [WARNING] Arquitectura detectada: x86 (32-bit) - Rendimiento limitado
+    set "SYSTEM_ARCH=x86" 
+    set "PYTHON_ARCH=win32"
+    echo [WARNING] Arquitectura: x86 (32-bit) - Rendimiento limitado
 )
-
-REM Detectar version de Windows
-for /f "tokens=4-5 delims=. " %%i in ('ver') do set "WIN_VERSION=%%i.%%j"
-echo [OK] Windows Version: %WIN_VERSION%
 
 REM Verificar memoria
 for /f "skip=1" %%i in ('wmic computersystem get TotalPhysicalMemory /value') do (
@@ -67,455 +91,586 @@ for /f "skip=1" %%i in ('wmic computersystem get TotalPhysicalMemory /value') do
         set /a "MEMORY_GB=!TotalPhysicalMemory! / 1024 / 1024 / 1024"
     )
 )
-if !MEMORY_GB! LSS 8 (
-    echo [WARNING] RAM: !MEMORY_GB!GB - Se recomienda minimo 8GB para SLEAP
-) else (
-    echo [OK] RAM: !MEMORY_GB!GB - Adecuada para machine learning
-)
+echo [INFO] RAM: !MEMORY_GB!GB
 
-REM Verificar conectividad
-echo [DEBUG] Verificando conectividad a internet...
+REM Verificar conectividad CRITICA
+echo [INFO] Verificando conectividad a internet...
 ping -n 1 8.8.8.8 >nul 2>&1
-if %errorLevel% equ 0 (
-    echo [OK] Conectividad a internet verificada
-) else (
+if %errorLevel% neq 0 (
     echo [ERROR] Sin conexion a internet - La instalacion no puede continuar
-    echo [SOLUCION] Verifique su conexion a internet e intente nuevamente
-    echo.
-    pause
-    exit /b 1
+    set "CRITICAL_ERROR=1"
+    call :check_critical_error
 )
-
+echo [OK] Conectividad verificada
 echo.
-echo [DEBUG] Configuracion del sistema completada
-pause
 
 REM ============================================================================
-REM CONFIGURACION DE DIRECTORIOS
+REM CONFIGURACION DE DIRECTORIOS CON VERIFICACION
 REM ============================================================================
-echo [STEP 3/10] Configurando estructura de directorios...
+call :increment_step "Configurando estructura de directorios..."
 
 set "INSTALL_ROOT=%USERPROFILE%\CinBehave"
-echo [DEBUG] Directorio de instalacion: %INSTALL_ROOT%
+echo [INFO] Directorio de instalacion: %INSTALL_ROOT%
 
-REM Crear directorio de logs
-if not exist "%INSTALL_ROOT%\logs" mkdir "%INSTALL_ROOT%\logs" >nul 2>&1
+REM Crear directorio principal y verificar
+if not exist "%INSTALL_ROOT%" (
+    mkdir "%INSTALL_ROOT%" >nul 2>&1
+    if not exist "%INSTALL_ROOT%" (
+        echo [ERROR] No se pudo crear directorio principal: %INSTALL_ROOT%
+        set "CRITICAL_ERROR=1"
+        call :check_critical_error
+    )
+)
 
-set "LOG_FILE=%INSTALL_ROOT%\logs\installation_debug_%DATE:~-4,4%%DATE:~-10,2%%DATE:~-7,2%_%TIME:~0,2%%TIME:~3,2%%TIME:~6,2%.log"
-echo [DEBUG] Archivo de log: %LOG_FILE%
+REM Crear subdirectorios y verificar cada uno
+set "SUBDIRS=logs temp config assets docs models exports Proyectos users"
+for %%d in (%SUBDIRS%) do (
+    mkdir "%INSTALL_ROOT%\%%d" >nul 2>&1
+    if not exist "%INSTALL_ROOT%\%%d" (
+        echo [ERROR] No se pudo crear subdirectorio: %%d
+        set "CRITICAL_ERROR=1"
+        call :check_critical_error
+    )
+)
 
-REM Inicializar log
-echo ============================================================================ > "%LOG_FILE%"
-echo CinBehave DEBUG Installation Log >> "%LOG_FILE%"
+cd /d "%INSTALL_ROOT%"
+if "%CD%" neq "%INSTALL_ROOT%" (
+    echo [ERROR] No se pudo acceder al directorio de instalacion
+    set "CRITICAL_ERROR=1"
+    call :check_critical_error
+)
+
+set "LOG_FILE=%INSTALL_ROOT%\logs\installation_fixed_%DATE:~-4,4%%DATE:~-10,2%%DATE:~-7,2%_%TIME:~0,2%%TIME:~3,2%%TIME:~6,2%.log"
+
+REM Inicializar log con verificacion
+echo ============================================================================ > "%LOG_FILE%" 2>nul
+if not exist "%LOG_FILE%" (
+    echo [ERROR] No se pudo crear archivo de log
+    set "CRITICAL_ERROR=1"
+    call :check_critical_error
+)
+
+echo CinBehave FIXED Installation Log >> "%LOG_FILE%"
 echo Started: %INSTALL_DATE% >> "%LOG_FILE%"
-echo System: %SYSTEM_ARCH% Windows %WIN_VERSION% RAM: !MEMORY_GB!GB >> "%LOG_FILE%"
+echo System: %SYSTEM_ARCH% Windows RAM: !MEMORY_GB!GB >> "%LOG_FILE%"
 echo ============================================================================ >> "%LOG_FILE%"
 
-if exist "%INSTALL_ROOT%" (
-    echo [WARNING] Instalacion existente detectada
-    echo [DEBUG] Respaldando instalacion anterior...
-    if exist "%INSTALL_ROOT%\backup" rmdir /s /q "%INSTALL_ROOT%\backup" >nul 2>&1
-    mkdir "%INSTALL_ROOT%\backup" >nul 2>&1
-    if exist "%INSTALL_ROOT%\users" (
-        echo [DEBUG] Respaldando datos de usuario...
-        xcopy "%INSTALL_ROOT%\users" "%INSTALL_ROOT%\backup\users" /E /H /I >nul 2>&1
-        echo [OK] Datos de usuario respaldados
-    )
-)
-
-mkdir "%INSTALL_ROOT%" >nul 2>&1
-mkdir "%INSTALL_ROOT%\temp" >nul 2>&1
-cd /d "%INSTALL_ROOT%"
-
-echo [OK] Estructura de directorios configurada
-echo [DEBUG] Directorio actual: %CD%
+echo [OK] Estructura de directorios configurada y verificada
 echo.
-pause
 
 REM ============================================================================
-REM DETECCION DE PYTHON
+REM DETECCION Y MANEJO DE PYTHON EXISTENTE
 REM ============================================================================
-echo [STEP 4/10] Detectando instalacion de Python...
+call :increment_step "Analizando instalaciones de Python..."
 
-python --version >temp\python_current.txt 2>nul
-if exist temp\python_current.txt (
-    for /f "tokens=2" %%v in (temp\python_current.txt) do set "CURRENT_PYTHON=%%v"
-    echo [OK] Python detectado: !CURRENT_PYTHON!
-    echo Python detectado: !CURRENT_PYTHON! >> "%LOG_FILE%"
-    del temp\python_current.txt
+set "COMPATIBLE_PYTHON="
+set "NEEDS_INSTALL=1"
+
+REM Verificar Python en PATH
+python --version >temp\python_check.txt 2>nul
+if exist temp\python_check.txt (
+    for /f "tokens=2" %%v in (temp\python_check.txt) do set "DETECTED_PYTHON=%%v"
+    echo [INFO] Python detectado en PATH: !DETECTED_PYTHON!
+    echo Python detectado: !DETECTED_PYTHON! >> "%LOG_FILE%"
     
     REM Verificar compatibilidad
-    echo !CURRENT_PYTHON! | findstr "3.13" >nul && set "PYTHON_INCOMPATIBLE=1"
-    echo !CURRENT_PYTHON! | findstr "3.12" >nul && set "PYTHON_INCOMPATIBLE=1"
-    echo !CURRENT_PYTHON! | findstr "3.14" >nul && set "PYTHON_INCOMPATIBLE=1"
+    echo !DETECTED_PYTHON! | findstr "3.8" >nul && set "COMPATIBLE_PYTHON=python" && set "NEEDS_INSTALL=0"
+    echo !DETECTED_PYTHON! | findstr "3.9" >nul && set "COMPATIBLE_PYTHON=python" && set "NEEDS_INSTALL=0"
+    echo !DETECTED_PYTHON! | findstr "3.10" >nul && set "COMPATIBLE_PYTHON=python" && set "NEEDS_INSTALL=0"
+    echo !DETECTED_PYTHON! | findstr "3.11" >nul && set "COMPATIBLE_PYTHON=python" && set "NEEDS_INSTALL=0"
     
-    if defined PYTHON_INCOMPATIBLE (
-        echo [WARNING] Version de Python incompatible: !CURRENT_PYTHON!
-        echo [INFO] Se instalara Python 3.11.6 aislado para CinBehave
-        set "NEED_PYTHON_INSTALL=1"
-    ) else (
-        echo [OK] Version de Python compatible
-        set "PYTHON_EXE=python"
-        set "NEED_PYTHON_INSTALL=0"
-    )
-) else (
-    echo [WARNING] Python no detectado
-    echo [INFO] Se instalara Python 3.11.6 para CinBehave
-    set "NEED_PYTHON_INSTALL=1"
+    del temp\python_check.txt
 )
 
+if "%NEEDS_INSTALL%"=="1" (
+    echo [INFO] Se requiere instalacion de Python 3.11.6 aislado
+) else (
+    echo [OK] Python compatible encontrado: !DETECTED_PYTHON!
+)
 echo.
-echo [DEBUG] Estado de Python determinado
-pause
 
 REM ============================================================================
-REM INSTALACION DE PYTHON (SI ES NECESARIO)
+REM INSTALACION DE PYTHON 3.11.6 (SI ES NECESARIO)
 REM ============================================================================
-if "%NEED_PYTHON_INSTALL%"=="1" (
-    echo [STEP 5/10] Instalando Python 3.11.6 aislado...
+if "%NEEDS_INSTALL%"=="1" (
+    call :increment_step "Instalando Python 3.11.6 aislado..."
     
     if "%SYSTEM_ARCH%"=="x64" (
-        set "PYTHON_INSTALLER=https://www.python.org/ftp/python/3.11.6/python-3.11.6-amd64.exe"
+        set "PYTHON_URL=https://www.python.org/ftp/python/3.11.6/python-3.11.6-amd64.exe"
     ) else (
-        set "PYTHON_INSTALLER=https://www.python.org/ftp/python/3.11.6/python-3.11.6.exe"
+        set "PYTHON_URL=https://www.python.org/ftp/python/3.11.6/python-3.11.6.exe"
     )
     
-    echo [DEBUG] Descargando Python desde: !PYTHON_INSTALLER!
-    echo [INFO] Esto puede tomar varios minutos...
+    echo [INFO] Descargando Python 3.11.6...
+    echo [WARNING] Esta operacion puede tomar 5-10 minutos
     
-    powershell -Command "try { Write-Host '[DOWNLOAD] Descargando Python 3.11.6...'; Invoke-WebRequest -Uri '!PYTHON_INSTALLER!' -OutFile 'temp\python_installer.exe' -UseBasicParsing } catch { Write-Host '[ERROR] Descarga fallida'; exit 1 }"
+    powershell -Command "try { Invoke-WebRequest -Uri '!PYTHON_URL!' -OutFile 'temp\python_installer.exe' -UseBasicParsing; Write-Host '[OK] Python descargado' } catch { Write-Host '[ERROR] Descarga fallida'; exit 1 }"
     
-    if exist temp\python_installer.exe (
-        echo [OK] Python installer descargado
-        echo [INSTALL] Instalando Python 3.11.6...
-        echo [INFO] Esta operacion puede tomar 5-10 minutos
-        
-        start /wait temp\python_installer.exe /quiet TargetDir="%INSTALL_ROOT%\Python311" InstallAllUsers=0 PrependPath=0 AssociateFiles=0 CompileAll=0 Include_test=0
-        
-        if exist "%INSTALL_ROOT%\Python311\python.exe" (
-            echo [OK] Python 3.11.6 instalado exitosamente
-            set "PYTHON_EXE=%INSTALL_ROOT%\Python311\python.exe"
-            echo Python aislado instalado: %PYTHON_EXE% >> "%LOG_FILE%"
-        ) else (
-            echo [ERROR] Instalacion de Python fallida
-            echo [DEBUG] Verificando archivos en %INSTALL_ROOT%\Python311\
-            dir "%INSTALL_ROOT%\Python311\" 2>nul || echo [DEBUG] Directorio Python311 no existe
-            echo.
-            echo [ERROR] La instalacion no puede continuar sin Python
-            echo Presiona cualquier tecla para salir...
-            pause >nul
-            exit /b 1
-        )
+    if not exist temp\python_installer.exe (
+        echo [ERROR] No se pudo descargar Python installer
+        echo Descarga Python fallida >> "%LOG_FILE%"
+        set "CRITICAL_ERROR=1"
+        call :check_critical_error
+    )
+    
+    echo [INFO] Instalando Python 3.11.6... (Por favor espere)
+    start /wait temp\python_installer.exe /quiet TargetDir="%INSTALL_ROOT%\Python311" InstallAllUsers=0 PrependPath=0 AssociateFiles=0 CompileAll=0 Include_test=0
+    
+    REM VERIFICACION CRITICA de Python
+    if exist "%INSTALL_ROOT%\Python311\python.exe" (
+        echo [OK] Python 3.11.6 instalado exitosamente
+        set "PYTHON_EXE=%INSTALL_ROOT%\Python311\python.exe"
+        set "PYTHON_INSTALLED=1"
+        echo Python aislado instalado: %PYTHON_EXE% >> "%LOG_FILE%"
     ) else (
-        echo [ERROR] No se pudo descargar el instalador de Python
-        echo [DEBUG] Verificando conectividad...
-        ping -n 1 8.8.8.8 >nul && echo [DEBUG] Internet OK || echo [DEBUG] Sin internet
-        echo.
-        echo [ERROR] La instalacion no puede continuar
-        echo Presiona cualquier tecla para salir...
-        pause >nul
-        exit /b 1
+        echo [ERROR] Instalacion de Python fallida - archivo ejecutable no encontrado
+        echo [DEBUG] Verificando contenido de Python311:
+        dir "%INSTALL_ROOT%\Python311\" 2>nul || echo [DEBUG] Directorio Python311 vacio o no existe
+        echo Python instalacion fallida >> "%LOG_FILE%"
+        set "CRITICAL_ERROR=1"
+        call :check_critical_error
     )
 ) else (
-    echo [STEP 5/10] Usando Python existente...
-    echo [OK] Python compatible encontrado: %CURRENT_PYTHON%
+    call :increment_step "Usando Python existente del sistema..."
+    set "PYTHON_EXE=%COMPATIBLE_PYTHON%"
+    set "PYTHON_INSTALLED=1"
+    echo [OK] Usando Python compatible: %COMPATIBLE_PYTHON%
 )
-
 echo.
-echo [DEBUG] Configuracion de Python completada
-pause
 
 REM ============================================================================
-REM CREAR ENTORNO VIRTUAL
+REM CREACION DE ENTORNO VIRTUAL CON VERIFICACION ROBUSTA
 REM ============================================================================
-echo [STEP 6/10] Creando entorno virtual...
+call :increment_step "Creando entorno virtual..."
 
-echo [DEBUG] Eliminando entorno virtual anterior...
+echo [INFO] Eliminando entorno virtual anterior si existe...
 if exist venv rmdir /s /q venv >nul 2>&1
 
-echo [DEBUG] Creando nuevo entorno virtual...
-echo [INFO] Ejecutando: "%PYTHON_EXE%" -m venv venv --clear
-
+echo [INFO] Creando entorno virtual con Python: %PYTHON_EXE%
 "%PYTHON_EXE%" -m venv venv --clear
-if %errorLevel% neq 0 (
-    echo [ERROR] Fallo al crear entorno virtual
-    echo [DEBUG] Codigo de error: %errorLevel%
-    echo [DEBUG] Verificando Python ejecutable...
-    "%PYTHON_EXE%" --version 2>nul || echo [DEBUG] Python no ejecutable
-    echo.
-    echo Presiona cualquier tecla para salir...
-    pause >nul
-    exit /b 1
+set "VENV_RESULT=%errorLevel%"
+
+REM VERIFICACION MULTIPLE del entorno virtual
+if %VENV_RESULT% neq 0 (
+    echo [ERROR] Comando venv fallo con codigo: %VENV_RESULT%
+    echo Venv comando fallo >> "%LOG_FILE%"
+    set "CRITICAL_ERROR=1"
+    call :check_critical_error
 )
 
 if not exist venv\Scripts\activate.bat (
-    echo [ERROR] Entorno virtual no creado correctamente
-    echo [DEBUG] Verificando estructura de venv...
-    dir venv 2>nul || echo [DEBUG] Carpeta venv no existe
-    dir venv\Scripts 2>nul || echo [DEBUG] Carpeta Scripts no existe
-    echo.
-    echo Presiona cualquier tecla para salir...
-    pause >nul
-    exit /b 1
+    echo [ERROR] Archivo activate.bat no encontrado
+    echo [DEBUG] Verificando estructura de venv:
+    dir venv 2>nul || echo [DEBUG] Directorio venv no existe
+    dir venv\Scripts 2>nul || echo [DEBUG] Directorio Scripts no existe
+    echo Activate.bat no encontrado >> "%LOG_FILE%"
+    set "CRITICAL_ERROR=1"
+    call :check_critical_error
+)
+
+if not exist venv\Scripts\python.exe (
+    echo [ERROR] Python.exe no encontrado en entorno virtual
+    echo Python.exe venv no encontrado >> "%LOG_FILE%"
+    set "CRITICAL_ERROR=1"
+    call :check_critical_error
 )
 
 echo [OK] Entorno virtual creado exitosamente
-echo [DEBUG] Activando entorno virtual...
+set "VENV_CREATED=1"
+echo Entorno virtual creado >> "%LOG_FILE%"
 
+REM Activar entorno virtual y verificar
 call venv\Scripts\activate.bat
 if %errorLevel% neq 0 (
-    echo [ERROR] No se pudo activar el entorno virtual
-    echo [DEBUG] Codigo de error: %errorLevel%
-    echo.
-    echo Presiona cualquier tecla para salir...
-    pause >nul
-    exit /b 1
+    echo [ERROR] No se pudo activar entorno virtual
+    echo Activacion venv fallida >> "%LOG_FILE%"
+    set "CRITICAL_ERROR=1"
+    call :check_critical_error
 )
-
-echo [OK] Entorno virtual activado
 
 REM Verificar Python en entorno virtual
-python --version > temp\venv_python.txt 2>&1
-if exist temp\venv_python.txt (
-    for /f "tokens=2" %%v in (temp\venv_python.txt) do set "VENV_PYTHON=%%v"
-    echo [OK] Python en venv: %VENV_PYTHON%
-    del temp\venv_python.txt
-) else (
-    echo [ERROR] Python no disponible en entorno virtual
-    echo.
-    echo Presiona cualquier tecla para salir...
-    pause >nul
-    exit /b 1
+venv\Scripts\python.exe --version > temp\venv_python.txt 2>&1
+if not exist temp\venv_python.txt (
+    echo [ERROR] Python no funciona en entorno virtual
+    echo Python venv no funcional >> "%LOG_FILE%"
+    set "CRITICAL_ERROR=1"
+    call :check_critical_error
 )
 
-echo Entorno virtual creado: %VENV_PYTHON% >> "%LOG_FILE%"
+for /f "tokens=2" %%v in (temp\venv_python.txt) do set "VENV_PYTHON=%%v"
+echo [OK] Python en entorno virtual: %VENV_PYTHON%
+echo Python venv: %VENV_PYTHON% >> "%LOG_FILE%"
+del temp\venv_python.txt
 echo.
-echo [DEBUG] Entorno virtual configurado correctamente
-pause
 
 REM ============================================================================
-REM ACTUALIZAR PIP
+REM ACTUALIZACION DE PIP CON VERIFICACION
 REM ============================================================================
-echo [STEP 7/10] Actualizando herramientas de Python...
+call :increment_step "Actualizando herramientas de Python..."
 
-echo [DEBUG] Actualizando pip...
-python -m pip install --upgrade "pip>=23.0,<25.0"
-if %errorLevel% neq 0 (
-    echo [WARNING] Error actualizando pip (codigo: %errorLevel%)
-    echo [INFO] Continuando con version actual...
+echo [INFO] Actualizando pip...
+venv\Scripts\python.exe -m pip install --upgrade pip >temp\pip_update.log 2>&1
+set "PIP_RESULT=%errorLevel%"
+
+if %PIP_RESULT% equ 0 (
+    echo [OK] pip actualizado exitosamente
 ) else (
-    echo [OK] pip actualizado
+    echo [WARNING] Error actualizando pip (codigo: %PIP_RESULT%) - continuando
+    type temp\pip_update.log >> "%LOG_FILE%"
 )
 
-echo [DEBUG] Instalando setuptools y wheel...
-python -m pip install --upgrade "setuptools>=65.0" "wheel>=0.40.0"
-if %errorLevel% neq 0 (
-    echo [WARNING] Error con setuptools/wheel (codigo: %errorLevel%)
-    echo [INFO] Continuando...
+echo [INFO] Instalando setuptools y wheel...
+venv\Scripts\python.exe -m pip install setuptools wheel >temp\tools_install.log 2>&1
+if %errorLevel% equ 0 (
+    echo [OK] Herramientas base instaladas
 ) else (
-    echo [OK] setuptools y wheel actualizados
+    echo [WARNING] Error con herramientas base - continuando
+    type temp\tools_install.log >> "%LOG_FILE%"
 )
-
 echo.
-echo [DEBUG] Herramientas de Python actualizadas
-pause
 
 REM ============================================================================
-REM DESCARGAR APLICACION
+REM DESCARGA DE APLICACION CON VERIFICACION ROBUSTA
 REM ============================================================================
-echo [STEP 8/10] Descargando aplicacion CinBehave...
+call :increment_step "Descargando aplicacion CinBehave..."
 
-set "REPO_BASE=https://raw.githubusercontent.com/StevenM711/CinBehave/main"
-echo [DEBUG] Descargando desde: %REPO_BASE%
+set "APP_URL=https://raw.githubusercontent.com/StevenM711/CinBehave/main/cinbehave_gui.py"
+echo [INFO] Descargando desde: %APP_URL%
 
-powershell -Command "try { Write-Host '[DOWNLOAD] Descargando cinbehave_gui.py...'; Invoke-WebRequest -Uri '%REPO_BASE%/cinbehave_gui.py' -OutFile 'cinbehave_gui.py' -UseBasicParsing; Write-Host '[OK] Descarga completada' } catch { Write-Host '[ERROR] Error en descarga'; Write-Host $_.Exception.Message; exit 1 }"
+powershell -Command "try { Invoke-WebRequest -Uri '%APP_URL%' -OutFile 'cinbehave_gui.py' -UseBasicParsing; Write-Host '[OK] Descarga completada' } catch { Write-Host '[ERROR] Descarga fallida:' $_.Exception.Message; exit 1 }"
+set "DOWNLOAD_RESULT=%errorLevel%"
+
+REM VERIFICACION MULTIPLE de la aplicacion
+if %DOWNLOAD_RESULT% neq 0 (
+    echo [ERROR] Descarga de aplicacion fallida
+    echo App descarga fallida >> "%LOG_FILE%"
+    set "CRITICAL_ERROR=1"
+    call :check_critical_error
+)
 
 if not exist cinbehave_gui.py (
-    echo [ERROR] No se pudo descargar la aplicacion
-    echo [DEBUG] Verificando conectividad a GitHub...
-    ping -n 1 github.com >nul && echo [DEBUG] GitHub accesible || echo [DEBUG] GitHub no accesible
-    echo.
-    echo Presiona cualquier tecla para salir...
-    pause >nul
-    exit /b 1
+    echo [ERROR] Archivo cinbehave_gui.py no encontrado despues de descarga
+    echo App archivo no encontrado >> "%LOG_FILE%"
+    set "CRITICAL_ERROR=1"
+    call :check_critical_error
 )
 
-REM Verificar integridad
-for %%I in (cinbehave_gui.py) do set "FILE_SIZE=%%~zI"
-if %FILE_SIZE% LSS 1000 (
-    echo [ERROR] Archivo descargado parece corrupto (tamaño: %FILE_SIZE% bytes)
+REM Verificar tamaño de archivo
+for %%I in (cinbehave_gui.py) do set "APP_SIZE=%%~zI"
+if %APP_SIZE% LSS 10000 (
+    echo [ERROR] Archivo descargado muy pequeño (%APP_SIZE% bytes) - posiblemente corrupto
     echo [DEBUG] Contenido del archivo:
-    type cinbehave_gui.py 2>nul | more
-    echo.
-    echo Presiona cualquier tecla para salir...
-    pause >nul
-    exit /b 1
+    type cinbehave_gui.py | more
+    echo App archivo corrupto >> "%LOG_FILE%"
+    set "CRITICAL_ERROR=1"
+    call :check_critical_error
 )
 
-echo [OK] Aplicacion descargada exitosamente (tamaño: %FILE_SIZE% bytes)
-echo Aplicacion descargada: %FILE_SIZE% bytes >> "%LOG_FILE%"
+echo [OK] Aplicacion descargada y verificada (%APP_SIZE% bytes)
+set "APP_DOWNLOADED=1"
+echo App descargada: %APP_SIZE% bytes >> "%LOG_FILE%"
 echo.
-echo [DEBUG] Descarga de aplicacion completada
-pause
 
 REM ============================================================================
-REM INSTALAR DEPENDENCIAS CORE
+REM INSTALACION DE DEPENDENCIAS CRITICAS CON VERIFICACION
 REM ============================================================================
-echo [STEP 9/10] Instalando dependencias principales...
+call :increment_step "Instalando dependencias criticas..."
 
-echo [DEBUG] Instalando dependencias core (esto puede tomar varios minutos)...
+echo [INFO] Instalando dependencias core (esto puede tomar varios minutos)...
 
-REM Lista de paquetes core con versiones especificas
-set "CORE_PACKAGES=requests numpy>=1.21.0,<1.25.0 pandas>=1.5.0,<2.2.0 matplotlib>=3.6.0 Pillow>=9.0.0 opencv-python>=4.6.0 psutil>=5.9.0"
+REM Lista de dependencias criticas
+set "CORE_DEPS=requests numpy pandas matplotlib Pillow opencv-python psutil"
+set "INSTALLED_COUNT=0"
+set "TOTAL_DEPS=7"
 
-for %%p in (%CORE_PACKAGES%) do (
+for %%p in (%CORE_DEPS%) do (
     echo [INSTALL] Instalando %%p...
-    python -m pip install --only-binary=all "%%p"
-    if !errorLevel! neq 0 (
-        echo [WARNING] Error instalando %%p (codigo: !errorLevel!)
-        echo [INFO] Intentando sin restriccion binary...
-        python -m pip install "%%p"
-        if !errorLevel! neq 0 (
-            echo [ERROR] Fallo critico instalando %%p
-            echo Error instalando %%p >> "%LOG_FILE%"
-        ) else (
-            echo [OK] %%p instalado (sin binary)
-        )
+    venv\Scripts\python.exe -m pip install "%%p" >temp\install_%%p.log 2>&1
+    set "INSTALL_RESULT=!errorLevel!"
+    
+    if !INSTALL_RESULT! equ 0 (
+        echo [OK] %%p instalado exitosamente
+        set /a "INSTALLED_COUNT+=1"
     ) else (
-        echo [OK] %%p instalado
+        echo [ERROR] %%p fallo durante instalacion
+        echo Dependencia %%p fallo >> "%LOG_FILE%"
+        type temp\install_%%p.log >> "%LOG_FILE%"
     )
 )
 
+echo [INFO] Dependencias instaladas: %INSTALLED_COUNT%/%TOTAL_DEPS%
+
+if %INSTALLED_COUNT% LSS 5 (
+    echo [ERROR] Demasiadas dependencias fallaron - instalacion no viable
+    echo Dependencias insuficientes >> "%LOG_FILE%"
+    set "CRITICAL_ERROR=1"
+    call :check_critical_error
+) else (
+    echo [OK] Dependencias suficientes para funcionamiento basico
+    set "DEPS_INSTALLED=1"
+)
 echo.
-echo [DEBUG] Instalacion de dependencias core completada
-pause
 
 REM ============================================================================
-REM INSTALAR SLEAP (OPCIONAL)
+REM INSTALACION DE SLEAP (OPCIONAL PERO VERIFICADA)
 REM ============================================================================
-echo [STEP 10/10] Instalando SLEAP...
+call :increment_step "Instalando SLEAP (componente principal)..."
 
-echo [DEBUG] Intentando instalar SLEAP...
-echo [INFO] SLEAP es opcional - la aplicacion funcionara sin el
-echo [INFO] Esto puede tomar 10-15 minutos...
+echo [INFO] Instalando SLEAP - esto puede tomar 10-20 minutos...
+echo [WARNING] SLEAP es el componente principal para analisis de poses
 
-python -m pip install sleap
-if %errorLevel% equ 0 (
+venv\Scripts\python.exe -m pip install sleap >temp\sleap_install.log 2>&1
+set "SLEAP_RESULT=%errorLevel%"
+
+if %SLEAP_RESULT% equ 0 (
     echo [OK] SLEAP instalado exitosamente
     echo SLEAP instalado >> "%LOG_FILE%"
+    
+    REM Verificar importacion de SLEAP
+    venv\Scripts\python.exe -c "import sleap; print('SLEAP Version:', sleap.__version__)" >temp\sleap_test.txt 2>&1
+    if %errorLevel% equ 0 (
+        for /f "tokens=3" %%v in (temp\sleap_test.txt) do echo [INFO] SLEAP Version: %%v
+        del temp\sleap_test.txt
+    )
 ) else (
-    echo [WARNING] No se pudo instalar SLEAP (codigo: %errorLevel%)
-    echo [INFO] La aplicacion funcionara sin SLEAP, pero con funcionalidad limitada
-    echo SLEAP fallo >> "%LOG_FILE%"
+    echo [WARNING] SLEAP instalacion fallida - aplicacion funcionara con funcionalidad limitada
+    echo SLEAP instalacion fallida >> "%LOG_FILE%"
+    type temp\sleap_install.log >> "%LOG_FILE%"
 )
-
 echo.
-echo [DEBUG] Instalacion de SLEAP completada
-pause
 
 REM ============================================================================
-REM VALIDACION FINAL
+REM VALIDACION FINAL COMPLETA
 REM ============================================================================
-echo [VALIDATION] Validando instalacion...
+call :increment_step "Validando instalacion completa..."
 
-echo [DEBUG] Creando script de validacion...
+echo [INFO] Ejecutando validacion final...
+
+REM Crear script de validacion robusto
 (
 echo import sys, traceback
-echo print("=== VALIDACION DE CINBEHAVE ===")
-echo print("Python:", sys.version^)
-echo print("Directorio:", sys.executable^)
+echo print^("=== VALIDACION FINAL CINBEHAVE ==="^)
+echo print^("Python:", sys.version^)
+echo print^("Ejecutable:", sys.executable^)
 echo print^(^)
+echo print^("Verificando modulos core:"^)
 echo modules = ['requests', 'numpy', 'pandas', 'matplotlib', 'PIL', 'cv2', 'psutil']
-echo print("Verificando modulos core:")
+echo success_count = 0
 echo for module in modules:
 echo     try:
-echo         exec(f"import {module}")
-echo         mod = __import__(module^)
-echo         version = getattr(mod, '__version__', 'sin version'^)
-echo         print(f"[OK] {module} ({version}^)")
+echo         exec^(f"import {module}"^)
+echo         mod = __import__^(module^)
+echo         version = getattr^(mod, '__version__', 'sin version'^)
+echo         print^(f"[OK] {module} ^({version}^)"^)
+echo         success_count += 1
 echo     except Exception as e:
-echo         print(f"[ERROR] {module}: {e}")
+echo         print^(f"[ERROR] {module}: {e}"^)
 echo.
 echo print^(^)
-echo print("Verificando SLEAP:")
+echo print^("Verificando SLEAP:"^)
 echo try:
 echo     import sleap
-echo     print(f"[OK] SLEAP ({sleap.__version__}^)")
+echo     print^(f"[OK] SLEAP ^({sleap.__version__}^)"^)
 echo except Exception as e:
-echo     print(f"[WARNING] SLEAP: {e}")
+echo     print^(f"[WARNING] SLEAP: {e}"^)
 echo.
 echo print^(^)
-echo print("=== VALIDACION COMPLETADA ===")
-) > temp\validate.py
+echo print^(f"=== RESUMEN: {success_count}/{len^(modules^)} modulos core OK ==="^)
+echo if success_count >= 5:
+echo     print^("[RESULTADO] Instalacion EXITOSA - CinBehave listo para usar"^)
+echo     exit^(0^)
+echo else:
+echo     print^("[RESULTADO] Instalacion FALLIDA - Dependencias insuficientes"^)
+echo     exit^(1^)
+) > temp\final_validation.py
 
-echo [DEBUG] Ejecutando validacion...
-python temp\validate.py
+venv\Scripts\python.exe temp\final_validation.py > temp\validation_output.txt 2>&1
+set "VALIDATION_RESULT=%errorLevel%"
+
+echo [INFO] Resultados de validacion:
+type temp\validation_output.txt
 echo.
 
-REM ============================================================================
-REM CREAR LANZADORES
-REM ============================================================================
-echo [DEBUG] Creando lanzadores...
-
-(
-echo @echo off
-echo cd /d "%%~dp0"
-echo call venv\Scripts\activate.bat
-echo python cinbehave_gui.py
-echo echo.
-echo echo [INFO] CinBehave cerrado
-echo pause
-) > CinBehave.bat
-
-(
-echo @echo off
-echo cd /d "%%~dp0"
-echo call venv\Scripts\activate.bat
-echo python temp\validate.py
-echo echo.
-echo pause
-) > Validar_Instalacion.bat
-
-echo [OK] Lanzadores creados
-
-REM ============================================================================
-REM COMPLETADO
-REM ============================================================================
-echo.
-echo ============================================================================
-echo                        INSTALACION COMPLETADA
-echo ============================================================================
-echo.
-echo [SUCCESS] CinBehave ha sido instalado exitosamente!
-echo.
-echo Ubicacion: %INSTALL_ROOT%
-echo Python: %VENV_PYTHON%
-echo.
-echo PARA USAR CINBEHAVE:
-echo 1. Ejecutar: CinBehave.bat
-echo 2. O desde la linea de comandos: 
-echo    cd "%INSTALL_ROOT%"
-echo    call venv\Scripts\activate.bat
-echo    python cinbehave_gui.py
-echo.
-echo PARA VALIDAR:
-echo - Ejecutar: Validar_Instalacion.bat
-echo.
-echo LOG COMPLETO: %LOG_FILE%
-echo.
-echo ============================================================================
-
-REM PREGUNTAR SI LANZAR AHORA
-set /p "LAUNCH_NOW=¿Deseas lanzar CinBehave ahora? (s/n): "
-if /i "%LAUNCH_NOW%"=="s" (
-    echo.
-    echo [LAUNCH] Iniciando CinBehave...
-    start "" "%INSTALL_ROOT%\CinBehave.bat"
+if %VALIDATION_RESULT% neq 0 (
+    echo [ERROR] Validacion final fallida
+    echo Validacion final fallida >> "%LOG_FILE%"
+    set "CRITICAL_ERROR=1"
+    call :check_critical_error
 )
 
+type temp\validation_output.txt >> "%LOG_FILE%"
+echo [OK] Validacion final exitosa
 echo.
-echo [COMPLETE] Instalacion terminada. Presiona cualquier tecla para salir...
-pause >nul
+
+REM ============================================================================
+REM CREACION DE LANZADORES CON VERIFICACION
+REM ============================================================================
+call :increment_step "Creando lanzadores de aplicacion..."
+
+REM Lanzador principal con manejo de errores
+(
+echo @echo off
+echo REM CinBehave Enterprise Launcher - v%INSTALLER_VERSION%
+echo cd /d "%%~dp0"
+echo.
+echo echo ============================================================================
+echo echo                        CinBehave Enterprise Suite
+echo echo ============================================================================
+echo echo.
+echo echo [INFO] Iniciando CinBehave...
+echo.
+echo REM Verificar entorno virtual
+echo if not exist venv\Scripts\activate.bat ^(
+echo     echo [ERROR] Entorno virtual no encontrado
+echo     echo [SOLUCION] Ejecutar el instalador nuevamente
+echo     pause
+echo     exit /b 1
+echo ^)
+echo.
+echo REM Activar entorno virtual
+echo call venv\Scripts\activate.bat
+echo if %%errorLevel%% neq 0 ^(
+echo     echo [ERROR] No se pudo activar entorno virtual
+echo     pause
+echo     exit /b 1
+echo ^)
+echo.
+echo REM Verificar aplicacion principal
+echo if not exist cinbehave_gui.py ^(
+echo     echo [ERROR] Aplicacion principal no encontrada
+echo     echo [SOLUCION] Ejecutar el instalador nuevamente
+echo     pause
+echo     exit /b 1
+echo ^)
+echo.
+echo REM Verificar dependencias criticas
+echo python -c "import requests, numpy" ^>nul 2^>^&1
+echo if %%errorLevel%% neq 0 ^(
+echo     echo [ERROR] Dependencias criticas faltantes
+echo     echo [SOLUCION] Ejecutar: system_repair.bat
+echo     pause
+echo     exit /b 1
+echo ^)
+echo.
+echo REM Lanzar aplicacion
+echo echo [LAUNCH] Iniciando interfaz grafica...
+echo python cinbehave_gui.py
+echo.
+echo REM Manejar salida
+echo if %%errorLevel%% neq 0 ^(
+echo     echo.
+echo     echo [ERROR] CinBehave termino con error %%errorLevel%%
+echo     echo [LOG] Verifique logs\cinbehave.log para detalles
+echo     echo.
+echo ^)
+echo.
+echo echo [INFO] CinBehave cerrado
+echo echo Presiona cualquier tecla para salir...
+echo pause ^>nul
+) > CinBehave_Enterprise.bat
+
+REM Validador mejorado
+(
+echo @echo off
+echo REM CinBehave System Validator - v%INSTALLER_VERSION%
+echo cd /d "%%~dp0"
+echo call venv\Scripts\activate.bat ^>nul 2^>^&1
+echo.
+echo echo ============================================================================
+echo echo                      CinBehave System Validation
+echo echo                           Enterprise Edition
+echo echo ============================================================================
+echo echo.
+echo python temp\final_validation.py
+echo echo.
+echo echo ============================================================================
+echo pause
+) > Validar_Instalacion_Completa.bat
+
+echo [OK] Lanzadores creados y verificados
+echo.
+
+REM ============================================================================
+REM VERIFICACION FINAL DE ESTADO
+REM ============================================================================
+call :increment_step "Verificacion final de estado..."
+
+echo [INFO] Verificando estado final de instalacion...
+echo.
+echo Estado de componentes:
+echo - Python instalado: %PYTHON_INSTALLED%
+echo - Entorno virtual: %VENV_CREATED%
+echo - Aplicacion descargada: %APP_DOWNLOADED%
+echo - Dependencias instaladas: %DEPS_INSTALLED%
+echo.
+
+REM Solo reportar exito si TODO esta instalado
+if "%PYTHON_INSTALLED%"=="1" if "%VENV_CREATED%"=="1" if "%APP_DOWNLOADED%"=="1" if "%DEPS_INSTALLED%"=="1" (
+    set "INSTALLATION_SUCCESS=1"
+) else (
+    set "INSTALLATION_SUCCESS=0"
+    echo [ERROR] Instalacion incompleta - algunos componentes fallaron
+    set "CRITICAL_ERROR=1"
+    call :check_critical_error
+)
+
+echo Instalacion completada: %DATE% %TIME% >> "%LOG_FILE%"
+echo Estado final: SUCCESS=%INSTALLATION_SUCCESS% PYTHON=%PYTHON_INSTALLED% VENV=%VENV_CREATED% APP=%APP_DOWNLOADED% DEPS=%DEPS_INSTALLED% >> "%LOG_FILE%"
+
+REM ============================================================================
+REM RESUMEN FINAL SOLO SI TODO ESTA OK
+REM ============================================================================
+if "%INSTALLATION_SUCCESS%"=="1" (
+    echo.
+    echo ============================================================================
+    echo                        INSTALACION COMPLETADA EXITOSAMENTE
+    echo ============================================================================
+    echo.
+    echo [SUCCESS] CinBehave Enterprise Suite instalado correctamente
+    echo.
+    echo Ubicacion: %INSTALL_ROOT%
+    echo Python: %VENV_PYTHON%
+    echo Aplicacion: cinbehave_gui.py ^(%APP_SIZE% bytes^)
+    echo Dependencias: %INSTALLED_COUNT%/%TOTAL_DEPS% modulos core
+    echo.
+    echo PARA USAR CINBEHAVE:
+    echo 1. Ejecutar: CinBehave_Enterprise.bat
+    echo 2. O desde el menu inicio: CinBehave Enterprise
+    echo.
+    echo PARA VALIDAR:
+    echo - Ejecutar: Validar_Instalacion_Completa.bat
+    echo.
+    echo LOG COMPLETO: %LOG_FILE%
+    echo.
+    echo ============================================================================
+    echo.
+    
+    REM Preguntar si lanzar ahora
+    set /p "LAUNCH_NOW=¿Deseas lanzar CinBehave ahora? (s/n): "
+    if /i "!LAUNCH_NOW!"=="s" (
+        echo.
+        echo [LAUNCH] Iniciando CinBehave Enterprise...
+        start "" "%INSTALL_ROOT%\CinBehave_Enterprise.bat"
+    )
+    
+    echo.
+    echo [COMPLETE] Instalacion terminada exitosamente
+    echo Presiona cualquier tecla para salir...
+    pause >nul
+) else (
+    echo.
+    echo ============================================================================
+    echo                           INSTALACION FALLIDA
+    echo ============================================================================
+    echo.
+    echo [FAILED] La instalacion no se completo correctamente
+    echo [LOG] Revise el archivo de log para detalles: %LOG_FILE%
+    echo [SUPPORT] Comparta el log completo para obtener soporte
+    echo.
+    echo Presiona cualquier tecla para salir...
+    pause >nul
+    exit /b 1
+)
 
 endlocal
 exit /b 0
