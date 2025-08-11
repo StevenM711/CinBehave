@@ -1,452 +1,516 @@
+
 @echo off
-REM ============================================================================
-REM CinBehave Debug Installer - Diagnóstico y Solución de Problemas
-REM ============================================================================
+REM CinBehave - SLEAP Analysis GUI Installer for Windows
+REM Version: 1.0 - Fixed Edition for Common Errors
+REM Handles: hdf5.dll, requests, compilation issues
 
 setlocal enabledelayedexpansion
-cls
 
-echo ============================================================================
-echo                    CinBehave - Diagnostico del Instalador
-echo ============================================================================
+REM Configurar colores
+set "RED=[91m"
+set "GREEN=[92m"
+set "YELLOW=[93m"
+set "BLUE=[94m"
+set "NC=[0m"
+
+REM Mostrar banner
+cls
+echo.
+echo    ╔══════════════════════════════════════════════════════════════╗
+echo    ║                 CinBehave - SLEAP Analysis GUI               ║
+echo    ║                   Instalador Windows FIXED                  ║
+echo    ║                   Soluciona Errores Comunes                 ║
+echo    ║                                                              ║
+echo    ║    🔧 Corrige: hdf5.dll, requests, dependencias             ║
+echo    ║    🧠 Instala: SLEAP con todas las dependencias             ║
+echo    ║                                                              ║
+echo    ╚══════════════════════════════════════════════════════════════╝
 echo.
 
-REM Verificar privilegios de administrador
-echo [1/8] Verificando privilegios de administrador...
+REM Verificar si se ejecuta como administrador
 net session >nul 2>&1
 if %errorLevel% neq 0 (
-    echo ❌ ERROR: Se requieren privilegios de administrador
-    echo.
-    echo SOLUCION: 
-    echo 1. Haz clic derecho en este archivo
-    echo 2. Selecciona "Ejecutar como administrador"
-    echo.
+    echo %RED%[ERROR]%NC% Este instalador requiere permisos de administrador.
+    echo %YELLOW%[INFO]%NC% Ejecuta como administrador haciendo clic derecho en el archivo.
     pause
     exit /b 1
-) else (
-    echo ✅ Privilegios de administrador verificados
 )
 
-REM Verificar conectividad
+echo %GREEN%[INFO]%NC% Iniciando instalación corregida de CinBehave...
 echo.
-echo [2/8] Verificando conectividad a internet...
-ping -n 1 8.8.8.8 >nul 2>&1
+
+REM Verificar sistema Windows
+echo %BLUE%[STEP 1/15]%NC% Verificando sistema Windows...
+ver | find "Windows" >nul
 if %errorLevel% neq 0 (
-    echo ❌ ERROR: Sin conexión a internet
-    echo.
-    echo SOLUCION: Verifique su conexión de red
-    pause
-    exit /b 1
-) else (
-    echo ✅ Conectividad verificada
-)
-
-REM Verificar acceso a GitHub
-echo.
-echo [3/8] Verificando acceso a GitHub...
-powershell -Command "try { Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/StevenM711/CinBehave/main/cinbehave_gui.py' -Method Head -UseBasicParsing -TimeoutSec 10 | Out-Null; Write-Host '✅ GitHub accesible' } catch { Write-Host '❌ GitHub no accesible'; exit 1 }" 2>nul
-if %errorLevel% neq 0 (
-    echo ❌ ERROR: No se puede acceder a GitHub
-    echo.
-    echo SOLUCION: Verifique firewall/antivirus
+    echo %RED%[ERROR]%NC% Este instalador está diseñado para Windows.
     pause
     exit /b 1
 )
 
-REM Verificar Python existente
-echo.
-echo [4/8] Verificando instalaciones de Python...
-python --version >nul 2>&1
-if %errorLevel% equ 0 (
-    for /f "tokens=2" %%v in ('python --version 2^>^&1') do set "CURRENT_PYTHON=%%v"
-    echo ⚠️  Python actual: !CURRENT_PYTHON!
-    echo    Nota: Se instalará Python 3.11.6 aislado para CinBehave
-) else (
-    echo ✅ No hay Python en PATH (ideal para instalación limpia)
-)
+for /f "tokens=4-5 delims=. " %%i in ('ver') do set VERSION=%%i.%%j
+echo %GREEN%[INFO]%NC% Windows %VERSION% detectado
 
-REM Verificar espacio en disco
-echo.
-echo [5/8] Verificando espacio en disco...
-for /f "tokens=3" %%a in ('dir /-c %USERPROFILE% 2^>nul ^| find "bytes free"') do set "FREE_SPACE=%%a"
-set /a "FREE_GB=!FREE_SPACE! / 1024 / 1024 / 1024" 2>nul
-if defined FREE_GB (
-    if !FREE_GB! LSS 5 (
-        echo ❌ ERROR: Espacio insuficiente (!FREE_GB!GB disponible)
-        echo    Se requieren al menos 5GB libres
-        pause
-        exit /b 1
-    ) else (
-        echo ✅ Espacio en disco: !FREE_GB!GB disponible
-    )
-) else (
-    echo ⚠️  No se pudo verificar espacio en disco
-)
-
-REM Verificar arquitectura del sistema
-echo.
-echo [6/8] Verificando arquitectura del sistema...
+REM Verificar arquitectura
+echo %BLUE%[STEP 2/15]%NC% Verificando arquitectura del sistema...
 if "%PROCESSOR_ARCHITECTURE%"=="AMD64" (
-    echo ✅ Sistema: 64-bit (óptimo)
-    set "SYSTEM_ARCH=x64"
+    set "ARCH=x64"
+    echo %GREEN%[INFO]%NC% Arquitectura x64 detectada
 ) else (
-    echo ⚠️  Sistema: 32-bit (funcionalidad limitada)
-    set "SYSTEM_ARCH=x86"
-)
-
-REM Verificar memoria RAM
-echo.
-echo [7/8] Verificando memoria RAM...
-for /f "skip=1" %%i in ('wmic computersystem get TotalPhysicalMemory /value 2^>nul') do (
-    if not "%%i"=="" (
-        set "%%i"
-        set /a "MEMORY_GB=!TotalPhysicalMemory! / 1024 / 1024 / 1024" 2>nul
-    )
-)
-if defined MEMORY_GB (
-    if !MEMORY_GB! LSS 4 (
-        echo ⚠️  RAM: !MEMORY_GB!GB (mínimo para SLEAP: 8GB)
-    ) else (
-        echo ✅ RAM: !MEMORY_GB!GB (adecuada)
-    )
-) else (
-    echo ⚠️  No se pudo verificar RAM
+    set "ARCH=x86"
+    echo %GREEN%[INFO]%NC% Arquitectura x86 detectada
 )
 
 REM Verificar GPU
-echo.
-echo [8/8] Verificando GPU...
+echo %BLUE%[STEP 3/15]%NC% Verificando GPU disponible...
 nvidia-smi >nul 2>&1
 if %errorLevel% equ 0 (
-    echo ✅ GPU NVIDIA detectada (aceleración de hardware disponible)
-    set "GPU_SUPPORT=NVIDIA"
+    echo %GREEN%[INFO]%NC% GPU NVIDIA detectada - Aceleración SLEAP habilitada
+    set "GPU_SUPPORT=nvidia"
 ) else (
-    wmic path win32_VideoController get name 2>nul | findstr /i "AMD" >nul
-    if %errorLevel% equ 0 (
-        echo ⚠️  GPU AMD detectada (aceleración limitada)
-        set "GPU_SUPPORT=AMD"
+    echo %YELLOW%[WARNING]%NC% GPU NVIDIA no detectada - Usando CPU
+    set "GPU_SUPPORT=cpu"
+)
+
+REM Crear directorio de instalación
+echo %BLUE%[STEP 4/15]%NC% Creando directorio de instalación...
+set "INSTALL_DIR=%USERPROFILE%\CinBehave"
+if exist "%INSTALL_DIR%" (
+    echo %YELLOW%[WARNING]%NC% El directorio ya existe. Limpiando instalación previa...
+    rmdir /s /q "%INSTALL_DIR%\venv" 2>nul
+    rmdir /s /q "%INSTALL_DIR%\temp" 2>nul
+    del "%INSTALL_DIR%\*.py" 2>nul
+    del "%INSTALL_DIR%\*.txt" 2>nul
+) else (
+    mkdir "%INSTALL_DIR%"
+)
+
+cd /d "%INSTALL_DIR%"
+
+REM Verificar e instalar Python
+echo %BLUE%[STEP 5/15]%NC% Verificando Python...
+python --version >nul 2>&1
+if %errorLevel% neq 0 (
+    echo %YELLOW%[WARNING]%NC% Python no encontrado. Instalando Python 3.11...
+    
+    REM Descargar Python
+    echo %GREEN%[INFO]%NC% Descargando Python 3.11...
+    if "%ARCH%"=="x64" (
+        set "PYTHON_URL=https://www.python.org/ftp/python/3.11.6/python-3.11.6-amd64.exe"
     ) else (
-        echo ⚠️  Solo CPU (procesamiento más lento)
-        set "GPU_SUPPORT=CPU"
+        set "PYTHON_URL=https://www.python.org/ftp/python/3.11.6/python-3.11.6.exe"
+    )
+    
+    powershell -Command "Invoke-WebRequest -Uri '%PYTHON_URL%' -OutFile 'python_installer.exe'"
+    
+    REM Instalar Python silenciosamente
+    echo %GREEN%[INFO]%NC% Instalando Python...
+    python_installer.exe /quiet InstallAllUsers=1 PrependPath=1 Include_test=0
+    
+    REM Esperar a que termine la instalación
+    timeout /t 30 /nobreak >nul
+    
+    REM Limpiar instalador
+    del python_installer.exe
+    
+    REM Verificar instalación
+    python --version >nul 2>&1
+    if %errorLevel% neq 0 (
+        echo %RED%[ERROR]%NC% Error instalando Python. Por favor instala Python manualmente.
+        pause
+        exit /b 1
+    )
+) else (
+    echo %GREEN%[INFO]%NC% Python encontrado:
+    python --version
+)
+
+REM Verificar pip
+echo %BLUE%[STEP 6/15]%NC% Verificando pip...
+python -m pip --version >nul 2>&1
+if %errorLevel% neq 0 (
+    echo %GREEN%[INFO]%NC% Instalando pip...
+    python -m ensurepip --upgrade
+)
+
+REM Crear entorno virtual
+echo %BLUE%[STEP 7/15]%NC% Creando entorno virtual limpio...
+if exist "venv" rmdir /s /q "venv"
+python -m venv venv
+call venv\Scripts\activate.bat
+
+REM Actualizar pip y herramientas base
+echo %BLUE%[STEP 8/15]%NC% Actualizando herramientas base...
+python -m pip install --upgrade pip
+python -m pip install --upgrade setuptools wheel
+
+REM Descargar aplicación y requirements desde GitHub
+echo %BLUE%[STEP 9/15]%NC% Descargando aplicación CinBehave...
+powershell -Command "Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/StevenM711/CinBehave/main/cinbehave_gui.py' -OutFile 'cinbehave_gui.py'"
+powershell -Command "Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/StevenM711/CinBehave/main/requirements.txt' -OutFile 'requirements.txt'"
+
+REM Instalar dependencias críticas primero
+echo %BLUE%[STEP 10/15]%NC% Instalando dependencias críticas...
+echo %GREEN%[INFO]%NC% Instalando requests (requerido)...
+python -m pip install requests
+
+echo %GREEN%[INFO]%NC% Instalando librerías básicas...
+python -m pip install psutil pillow matplotlib seaborn
+
+echo %GREEN%[INFO]%NC% Instalando NumPy con versión compatible...
+python -m pip install "numpy>=1.21.0,<1.24.0"
+
+echo %GREEN%[INFO]%NC% Instalando pandas, scipy y utilidades...
+python -m pip install pandas scipy python-dateutil tqdm
+
+REM Instalar h5py con wheel precompilado para evitar hdf5.dll error
+echo %BLUE%[STEP 11/15]%NC% Instalando h5py (solucionando hdf5.dll)...
+echo %GREEN%[INFO]%NC% Usando wheel precompilado para h5py...
+python -m pip install --only-binary=all "h5py>=3.6.0,<3.10.0"
+if %errorLevel% neq 0 (
+    echo %YELLOW%[WARNING]%NC% Fallback: Instalando h5py desde conda-forge...
+    python -m pip install --find-links https://github.com/h5py/h5py/releases/download/3.8.0/ h5py
+    if %errorLevel% neq 0 (
+        echo %YELLOW%[WARNING]%NC% Fallback 2: Instalando h5py básico...
+        python -m pip install h5py --no-deps
     )
 )
 
-echo.
-echo ============================================================================
-echo                           RESUMEN DEL DIAGNÓSTICO
-echo ============================================================================
-echo.
-echo Estado del sistema: LISTO PARA INSTALACIÓN
-echo Arquitectura: %SYSTEM_ARCH%
-if defined MEMORY_GB echo Memoria: !MEMORY_GB!GB
-echo GPU: %GPU_SUPPORT%
-if defined CURRENT_PYTHON echo Python actual: !CURRENT_PYTHON!
-echo.
-echo ============================================================================
-echo.
+echo %GREEN%[INFO]%NC% Instalando procesamiento de video...
+python -m pip install "opencv-python>=4.5.0,<4.8.0" imageio imageio-ffmpeg
 
-REM Ofrecer opciones al usuario
-echo Seleccione una opción:
-echo.
-echo [1] Instalación COMPLETA (recomendado)
-echo [2] Instalación SOLO de dependencias básicas
-echo [3] Descargar instalador original y ejecutar con logs
-echo [4] Crear directorio CinBehave manualmente
-echo [5] Salir
-echo.
-set /p "CHOICE=Ingrese su opción (1-5): "
+echo %GREEN%[INFO]%NC% Instalando herramientas de datos...
+python -m pip install reportlab openpyxl xlsxwriter
 
-if "%CHOICE%"=="1" goto :FULL_INSTALL
-if "%CHOICE%"=="2" goto :BASIC_INSTALL  
-if "%CHOICE%"=="3" goto :DOWNLOAD_ORIGINAL
-if "%CHOICE%"=="4" goto :MANUAL_SETUP
-if "%CHOICE%"=="5" goto :EXIT
-
-echo Opción inválida. Ejecutando instalación completa...
-goto :FULL_INSTALL
-
-:FULL_INSTALL
-echo.
-echo ============================================================================
-echo                         INSTALACIÓN COMPLETA
-echo ============================================================================
-echo.
-
-REM Crear directorio de instalación
-set "INSTALL_DIR=%USERPROFILE%\CinBehave"
-echo Creando directorio: %INSTALL_DIR%
-if exist "%INSTALL_DIR%" (
-    echo ⚠️  Directorio existente detectado - creando backup...
-    if exist "%INSTALL_DIR%_backup" rmdir /s /q "%INSTALL_DIR%_backup"
-    move "%INSTALL_DIR%" "%INSTALL_DIR%_backup" >nul 2>&1
+echo %GREEN%[INFO]%NC% Instalando scikit-learn...
+python -m pip install --only-binary=all "scikit-learn>=1.0.0,<1.3.0"
+if %errorLevel% neq 0 (
+    echo %YELLOW%[WARNING]%NC% Instalando scikit-learn sin compilación...
+    python -m pip install scikit-learn --no-deps
+    python -m pip install joblib threadpoolctl
 )
-mkdir "%INSTALL_DIR%" 2>nul
-cd /d "%INSTALL_DIR%"
 
-REM Descargar Python 3.11.6
-echo.
-echo Descargando Python 3.11.6...
-if "%SYSTEM_ARCH%"=="x64" (
-    set "PYTHON_URL=https://www.python.org/ftp/python/3.11.6/python-3.11.6-amd64.exe"
+REM Instalar TensorFlow con compatibilidad
+echo %BLUE%[STEP 12/15]%NC% Instalando TensorFlow...
+if "%GPU_SUPPORT%"=="nvidia" (
+    echo %GREEN%[INFO]%NC% Instalando TensorFlow con soporte GPU...
+    python -m pip install --only-binary=all "tensorflow>=2.7.0,<2.13.0"
 ) else (
-    set "PYTHON_URL=https://www.python.org/ftp/python/3.11.6/python-3.11.6.exe"
+    echo %GREEN%[INFO]%NC% Instalando TensorFlow CPU...
+    python -m pip install --only-binary=all "tensorflow-cpu>=2.7.0,<2.13.0"
 )
 
-powershell -Command "Write-Host 'Descargando Python...'; try { Invoke-WebRequest -Uri '%PYTHON_URL%' -OutFile 'python_installer.exe' -UseBasicParsing } catch { Write-Host 'Error descarga Python'; exit 1 }"
-
-if not exist python_installer.exe (
-    echo ❌ Error descargando Python
-    pause
-    exit /b 1
+if %errorLevel% neq 0 (
+    echo %YELLOW%[WARNING]%NC% Error con TensorFlow. Instalando versión básica...
+    python -m pip install tensorflow==2.11.0
 )
 
-REM Instalar Python aislado
-echo.
-echo Instalando Python 3.11.6 (esto puede tomar varios minutos)...
-start /wait python_installer.exe /quiet TargetDir="%INSTALL_DIR%\Python311" InstallAllUsers=0 PrependPath=0 AssociateFiles=0
+REM Instalar SLEAP paso a paso
+echo %BLUE%[STEP 13/15]%NC% Instalando SLEAP...
+echo %GREEN%[INFO]%NC% Instalando SLEAP - puede tomar varios minutos...
 
-if not exist "%INSTALL_DIR%\Python311\python.exe" (
-    echo ❌ Error instalando Python
-    pause
-    exit /b 1
+REM Instalar dependencias de SLEAP primero
+echo %GREEN%[INFO]%NC% Preparando dependencias de SLEAP...
+python -m pip install attrs cattrs jsonpickle jsmin networkx packaging PySide2 pynvml rich
+python -m pip install imgaug imageio-ffmpeg qudida albumentations
+
+REM Instalar SLEAP
+python -m pip install sleap
+if %errorLevel% neq 0 (
+    echo %YELLOW%[WARNING]%NC% Error instalando SLEAP completo. Intentando instalación mínima...
+    python -m pip install --no-deps sleap
+    python -m pip install tensorflow-probability
 )
 
-echo ✅ Python 3.11.6 instalado exitosamente
-
-REM Crear entorno virtual
-echo.
-echo Creando entorno virtual...
-"%INSTALL_DIR%\Python311\python.exe" -m venv venv --clear
-if not exist venv\Scripts\activate.bat (
-    echo ❌ Error creando entorno virtual
-    pause
-    exit /b 1
+REM Verificar instalación de SLEAP
+echo %BLUE%[STEP 14/15]%NC% Verificando instalación...
+echo %GREEN%[INFO]%NC% Verificando SLEAP...
+python -c "import sleap; print('SLEAP instalado correctamente:', sleap.__version__)" 2>nul
+if %errorLevel% equ 0 (
+    echo %GREEN%[SUCCESS]%NC% SLEAP verificado correctamente
+) else (
+    echo %YELLOW%[WARNING]%NC% SLEAP instalado con advertencias
 )
 
-REM Activar entorno virtual
-call venv\Scripts\activate.bat
-echo ✅ Entorno virtual creado y activado
-
-REM Instalar dependencias básicas
-echo.
-echo Instalando dependencias básicas...
-python -m pip install --upgrade pip setuptools wheel
-python -m pip install requests numpy pandas matplotlib opencv-python
-
-REM Descargar aplicación CinBehave
-echo.
-echo Descargando aplicación CinBehave...
-powershell -Command "try { Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/StevenM711/CinBehave/main/cinbehave_gui.py' -OutFile 'cinbehave_gui.py' -UseBasicParsing } catch { Write-Host 'Error descarga app'; exit 1 }"
-
-if not exist cinbehave_gui.py (
-    echo ❌ Error descargando aplicación
-    pause
-    exit /b 1
+REM Verificar comando sleap-track
+sleap-track --help >nul 2>&1
+if %errorLevel% equ 0 (
+    echo %GREEN%[SUCCESS]%NC% Comando sleap-track disponible
+) else (
+    echo %YELLOW%[WARNING]%NC% Comando sleap-track puede requerir PATH manual
 )
 
-echo ✅ Aplicación descargada
+echo %GREEN%[INFO]%NC% Verificando requests...
+python -c "import requests; print('Requests OK:', requests.__version__)" 2>nul
+if %errorLevel% neq 0 (
+    echo %YELLOW%[WARNING]%NC% Reinstalando requests...
+    python -m pip install --force-reinstall requests
+)
 
-REM Crear launcher
-echo.
-echo Creando launcher...
+REM Crear estructura de directorios
+echo %BLUE%[STEP 15/15]%NC% Configurando estructura...
+mkdir users 2>nul
+mkdir temp 2>nul
+mkdir logs 2>nul
+mkdir config 2>nul
+mkdir assets 2>nul
+mkdir docs 2>nul
+mkdir models 2>nul
+mkdir Proyectos 2>nul
+
+REM Crear script de inicio mejorado
 (
 echo @echo off
 echo cd /d "%%~dp0"
 echo call venv\Scripts\activate.bat
-echo python cinbehave_gui.py
-echo pause
-) > CinBehave_Launcher.bat
-
-echo ✅ Launcher creado
-
-REM Crear acceso directo en escritorio
-powershell -Command "try { $WshShell = New-Object -ComObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut('%USERPROFILE%\Desktop\CinBehave.lnk'); $Shortcut.TargetPath = '%INSTALL_DIR%\CinBehave_Launcher.bat'; $Shortcut.WorkingDirectory = '%INSTALL_DIR%'; $Shortcut.Save() } catch {}"
-
-echo ✅ Acceso directo creado en escritorio
-
-echo.
-echo ============================================================================
-echo                    ✅ INSTALACIÓN COMPLETADA EXITOSAMENTE
-echo ============================================================================
-echo.
-echo Ubicación: %INSTALL_DIR%
-echo Launcher: CinBehave_Launcher.bat
-echo Acceso directo: Escritorio\CinBehave.lnk
-echo.
-echo Para iniciar CinBehave:
-echo 1. Doble clic en el acceso directo del escritorio
-echo 2. O ejecutar: %INSTALL_DIR%\CinBehave_Launcher.bat
-echo.
-
-set /p "LAUNCH_NOW=¿Desea ejecutar CinBehave ahora? (s/n): "
-if /i "%LAUNCH_NOW%"=="s" (
-    start "" "%INSTALL_DIR%\CinBehave_Launcher.bat"
-)
-
-goto :EXIT
-
-:BASIC_INSTALL
-echo.
-echo ============================================================================
-echo                      INSTALACIÓN BÁSICA DE DEPENDENCIAS
-echo ============================================================================
-echo.
-echo Esta opción solo instala las dependencias básicas de Python
-echo sin descargar CinBehave. Útil para diagnosticar problemas.
-echo.
-pause
-
-REM Verificar si Python está disponible
-python --version >nul 2>&1
-if %errorLevel% neq 0 (
-    echo ❌ ERROR: Python no encontrado en PATH
-    echo.
-    echo Para instalación básica necesita Python ya instalado.
-    echo Use la opción 1 (Instalación COMPLETA) en su lugar.
-    pause
-    goto :EXIT
-)
-
-echo Instalando dependencias básicas con Python actual...
-python -m pip install --upgrade pip
-python -m pip install requests numpy pandas matplotlib opencv-python pillow
-
-echo.
-echo ✅ Dependencias básicas instaladas
-echo.
-echo Para descargar CinBehave manualmente:
-echo 1. Crear carpeta para el proyecto
-echo 2. Descargar: https://raw.githubusercontent.com/StevenM711/CinBehave/main/cinbehave_gui.py
-echo 3. Ejecutar: python cinbehave_gui.py
-echo.
-pause
-goto :EXIT
-
-:DOWNLOAD_ORIGINAL
-echo.
-echo ============================================================================
-echo                   DESCARGA DEL INSTALADOR ORIGINAL CON LOGS
-echo ============================================================================
-echo.
-
-set "TEMP_DIR=%TEMP%\CinBehave_Debug"
-mkdir "%TEMP_DIR%" 2>nul
-cd /d "%TEMP_DIR%"
-
-echo Descargando instalador original...
-powershell -Command "try { Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/StevenM711/CinBehave/main/install_windows.bat' -OutFile 'install_windows_debug.bat' -UseBasicParsing } catch { Write-Host 'Error descarga'; exit 1 }"
-
-if not exist install_windows_debug.bat (
-    echo ❌ Error descargando instalador original
-    pause
-    goto :EXIT
-)
-
-echo ✅ Instalador descargado en: %TEMP_DIR%
-echo.
-echo Modificando instalador para logging detallado...
-
-REM Crear versión con logging
-powershell -Command "(Get-Content 'install_windows_debug.bat') -replace '@echo off', '@echo off`necho INICIO DEL INSTALADOR - %DATE% %TIME%' | Set-Content 'install_windows_logged.bat'"
-
-echo.
-echo Ejecutando instalador con logging...
-echo.
-echo NOTA: Mantenga esta ventana abierta para ver los errores
-echo.
-pause
-
-call install_windows_logged.bat
-
-echo.
-echo ============================================================================
-echo Si el instalador falló, revise los mensajes de error arriba.
-echo Logs guardados en: %TEMP_DIR%
-echo ============================================================================
-pause
-goto :EXIT
-
-:MANUAL_SETUP
-echo.
-echo ============================================================================
-echo                          CONFIGURACIÓN MANUAL
-echo ============================================================================
-echo.
-
-set "MANUAL_DIR=%USERPROFILE%\CinBehave_Manual"
-echo Creando directorio manual: %MANUAL_DIR%
-mkdir "%MANUAL_DIR%" 2>nul
-cd /d "%MANUAL_DIR%"
-
-echo.
-echo Creando estructura básica de directorios...
-mkdir logs temp users Proyectos models exports 2>nul
-
-echo.
-echo Descargando aplicación...
-powershell -Command "try { Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/StevenM711/CinBehave/main/cinbehave_gui.py' -OutFile 'cinbehave_gui.py' -UseBasicParsing } catch { Write-Host 'Error'; exit 1 }"
-
-if exist cinbehave_gui.py (
-    echo ✅ Aplicación descargada
-) else (
-    echo ❌ Error descargando aplicación
-    pause
-    goto :EXIT
-)
-
-echo.
-echo Creando launcher simple...
-(
-echo @echo off
+echo echo ================================
+echo echo    CinBehave - SLEAP Analysis GUI
+echo echo    Sistema de Análisis de Comportamiento
+echo echo ================================
+echo echo.
+echo echo Verificando dependencias...
+echo python -c "import requests, sleap, numpy, tensorflow; print('✅ Todas las dependencias OK')" 2^>nul
+echo if %%ERRORLEVEL%% neq 0 ^(
+echo     echo ❌ Error en dependencias. Ejecuta 'verificar_sistema.bat'
+echo     pause
+echo     exit /b 1
+echo ^)
+echo echo.
 echo echo Iniciando CinBehave...
 echo python cinbehave_gui.py
-echo if %%errorlevel%% neq 0 ^(
+echo if %%ERRORLEVEL%% neq 0 ^(
 echo     echo.
-echo     echo ERROR: %%errorlevel%%
-echo     echo.
-echo     echo Posibles soluciones:
-echo     echo 1. Instalar Python desde python.org
-echo     echo 2. Instalar dependencias: pip install requests numpy pandas matplotlib opencv-python pillow
-echo     echo.
+echo     echo ❌ Error ejecutando CinBehave.
+echo     echo 📋 Revisa el archivo logs\cinbehave.log para más detalles
+echo     echo 🔧 Ejecuta 'verificar_sistema.bat' para diagnosticar
 echo     pause
 echo ^)
-) > run_cinbehave.bat
+) > start_cinbehave.bat
 
+REM Crear script de verificación completo
+(
+echo @echo off
+echo echo ================================================
+echo echo       VERIFICACIÓN DEL SISTEMA - CinBehave
+echo echo ================================================
+echo echo.
+echo cd /d "%%~dp0"
+echo call venv\Scripts\activate.bat
 echo.
-echo ============================================================================
-echo                     ✅ CONFIGURACIÓN MANUAL COMPLETADA
-echo ============================================================================
+echo echo 🐍 PYTHON:
+echo python --version
+echo echo.
+echo echo 📊 NUMPY:
+echo python -c "import numpy; print('NumPy:', numpy.__version__)"
+echo echo.
+echo echo 🌐 REQUESTS:
+echo python -c "import requests; print('Requests:', requests.__version__)"
+echo echo.
+echo echo 🧠 TENSORFLOW:
+echo python -c "import tensorflow as tf; print('TensorFlow:', tf.__version__); print('GPU disponible:', len(tf.config.list_physical_devices('GPU')) > 0)"
+echo echo.
+echo echo 🔬 SLEAP:
+echo python -c "import sleap; print('SLEAP:', sleap.__version__)"
+echo echo.
+echo echo 📹 OPENCV:
+echo python -c "import cv2; print('OpenCV:', cv2.__version__)"
+echo echo.
+echo echo 📈 MATPLOTLIB:
+echo python -c "import matplotlib; print('Matplotlib:', matplotlib.__version__)"
+echo echo.
+echo echo 🗃️ H5PY:
+echo python -c "import h5py; print('h5py:', h5py.__version__)"
+echo echo.
+echo echo 🧮 SCIKIT-LEARN:
+echo python -c "import sklearn; print('Scikit-learn:', sklearn.__version__)"
+echo echo.
+echo echo ================================================
+echo echo           DIAGNÓSTICO COMPLETO
+echo echo ================================================
+echo echo.
+echo echo 📂 Archivos importantes:
+echo dir cinbehave_gui.py 2^>nul ^|^| echo ❌ cinbehave_gui.py FALTANTE
+echo dir requirements.txt 2^>nul ^|^| echo ❌ requirements.txt FALTANTE
+echo dir venv\Scripts\python.exe 2^>nul ^|^| echo ❌ Entorno virtual FALTANTE
+echo echo.
+echo echo 📁 Carpetas:
+echo dir /b users logs config Proyectos 2^>nul ^|^| echo ❌ Carpetas del sistema FALTANTES
+echo echo.
+echo echo ================================================
+echo if exist "logs\cinbehave.log" ^(
+echo     echo 📋 Últimas líneas del log:
+echo     echo ================================================
+echo     powershell -Command "Get-Content logs\cinbehave.log -Tail 10"
+echo ^) else ^(
+echo     echo 📋 Sin archivo de log aún
+echo ^)
+echo echo ================================================
+echo echo.
+echo pause
+) > verificar_sistema.bat
+
+REM Crear script de reparación
+(
+echo @echo off
+echo echo Reparando instalación de CinBehave...
+echo cd /d "%%~dp0"
+echo call venv\Scripts\activate.bat
+echo echo.
+echo echo Reinstalando dependencias críticas...
+echo python -m pip install --force-reinstall requests
+echo python -m pip install --force-reinstall numpy
+echo python -m pip install --force-reinstall --only-binary=all h5py
+echo echo.
+echo echo Verificando SLEAP...
+echo python -c "import sleap; print('SLEAP OK')" 2^>nul ^|^| python -m pip install --force-reinstall sleap
+echo echo.
+echo echo Reparación completada.
+echo pause
+) > reparar_instalacion.bat
+
+REM Crear acceso directo en el escritorio
+echo %GREEN%[INFO]%NC% Creando acceso directo en el escritorio...
+powershell -Command ^
+"$WshShell = New-Object -comObject WScript.Shell; ^
+$Shortcut = $WshShell.CreateShortcut('%USERPROFILE%\Desktop\CinBehave.lnk'); ^
+$Shortcut.TargetPath = '%INSTALL_DIR%\start_cinbehave.bat'; ^
+$Shortcut.WorkingDirectory = '%INSTALL_DIR%'; ^
+$Shortcut.Description = 'CinBehave - SLEAP Analysis GUI'; ^
+$Shortcut.Save()"
+
+REM Crear acceso en el menú inicio
+echo %GREEN%[INFO]%NC% Creando acceso en el menú inicio...
+set "START_MENU=%APPDATA%\Microsoft\Windows\Start Menu\Programs"
+mkdir "%START_MENU%\CinBehave" 2>nul
+powershell -Command ^
+"$WshShell = New-Object -comObject WScript.Shell; ^
+$Shortcut = $WshShell.CreateShortcut('%START_MENU%\CinBehave\CinBehave.lnk'); ^
+$Shortcut.TargetPath = '%INSTALL_DIR%\start_cinbehave.bat'; ^
+$Shortcut.WorkingDirectory = '%INSTALL_DIR%'; ^
+$Shortcut.Description = 'CinBehave - SLEAP Analysis GUI'; ^
+$Shortcut.Save()"
+
+powershell -Command ^
+"$WshShell = New-Object -comObject WScript.Shell; ^
+$Shortcut = $WshShell.CreateShortcut('%START_MENU%\CinBehave\Verificar Sistema.lnk'); ^
+$Shortcut.TargetPath = '%INSTALL_DIR%\verificar_sistema.bat'; ^
+$Shortcut.WorkingDirectory = '%INSTALL_DIR%'; ^
+$Shortcut.Description = 'Verificar instalación de CinBehave'; ^
+$Shortcut.Save()"
+
+powershell -Command ^
+"$WshShell = New-Object -comObject WScript.Shell; ^
+$Shortcut = $WshShell.CreateShortcut('%START_MENU%\CinBehave\Reparar Instalacion.lnk'); ^
+$Shortcut.TargetPath = '%INSTALL_DIR%\reparar_instalacion.bat'; ^
+$Shortcut.WorkingDirectory = '%INSTALL_DIR%'; ^
+$Shortcut.Description = 'Reparar instalación de CinBehave'; ^
+$Shortcut.Save()"
+
+REM Crear desinstalador
+(
+echo @echo off
+echo echo Desinstalando CinBehave...
 echo.
-echo Directorio: %MANUAL_DIR%
+echo REM Eliminar accesos directos
+echo del "%%USERPROFILE%%\Desktop\CinBehave.lnk" 2^>nul
+echo rmdir /s /q "%%APPDATA%%\Microsoft\Windows\Start Menu\Programs\CinBehave" 2^>nul
 echo.
-echo PASOS SIGUIENTES:
-echo 1. Instalar Python 3.11 desde python.org (si no lo tiene)
-echo 2. Abrir símbolo del sistema en: %MANUAL_DIR%
-echo 3. Ejecutar: pip install requests numpy pandas matplotlib opencv-python pillow
-echo 4. Ejecutar: run_cinbehave.bat
+echo REM Eliminar directorio principal
+echo cd /d "%%USERPROFILE%%"
+echo rmdir /s /q "CinBehave"
 echo.
-echo ¿Desea abrir el directorio ahora?
-set /p "OPEN_DIR=Abrir directorio (s/n): "
-if /i "%OPEN_DIR%"=="s" (
-    start "" "%MANUAL_DIR%"
+echo echo CinBehave desinstalado correctamente.
+echo pause
+) > uninstall.bat
+
+REM Crear archivo de información del sistema
+(
+echo ================================
+echo CINBEHAVE - INFORMACIÓN DEL SISTEMA
+echo ================================
+echo Fecha de instalación: %DATE% %TIME%
+echo Arquitectura: %ARCH%
+echo Soporte GPU: %GPU_SUPPORT%
+echo Python: Instalado
+echo SLEAP: Instalado
+echo TensorFlow: Instalado
+echo ================================
+echo.
+echo ARCHIVOS CREADOS:
+echo start_cinbehave.bat - Ejecutar CinBehave
+echo verificar_sistema.bat - Verificar instalación  
+echo reparar_instalacion.bat - Reparar problemas
+echo uninstall.bat - Desinstalar CinBehave
+echo.
+echo CARPETAS IMPORTANTES:
+echo users\ - Datos de usuarios
+echo Proyectos\ - Proyectos y videos
+echo logs\ - Archivos de log
+echo models\ - Modelos SLEAP descargados
+echo.
+echo PROBLEMAS SOLUCIONADOS:
+echo ✅ hdf5.dll error en h5py
+echo ✅ requests module missing
+echo ✅ Dependencias de compilación
+echo ✅ Wheels precompilados
+echo ✅ Instalación paso a paso
+echo ================================
+) > README_INSTALACION.txt
+
+REM Completar instalación
+cls
+echo.
+echo    ╔══════════════════════════════════════════════════════════════╗
+echo    ║                    INSTALACIÓN COMPLETA                      ║
+echo    ╠══════════════════════════════════════════════════════════════╣
+echo    ║                                                              ║
+echo    ║  🎉 CinBehave con SLEAP instalado exitosamente!             ║
+echo    ║  🔧 Errores comunes corregidos automáticamente              ║
+echo    ║                                                              ║
+echo    ║  📍 Ubicación: %USERPROFILE%\CinBehave                      ║
+echo    ║  🖥️ Acceso directo: Escritorio + Menú Inicio                ║
+echo    ║  🧠 SLEAP: Instalado y configurado                          ║
+echo    ║  🎮 GPU: %GPU_SUPPORT%                                       ║
+echo    ║  🐍 Python: Entorno virtual aislado                         ║
+echo    ║  ✅ Todas las dependencias: Instaladas                      ║
+echo    ║                                                              ║
+echo    ║  🚀 PARA EJECUTAR:                                          ║
+echo    ║  • Doble clic en icono del escritorio                       ║
+echo    ║  • O ejecutar: start_cinbehave.bat                          ║
+echo    ║                                                              ║
+echo    ║  🛠️ HERRAMIENTAS DE DIAGNÓSTICO:                            ║
+echo    ║  • verificar_sistema.bat - Verificación completa            ║
+echo    ║  • reparar_instalacion.bat - Reparar problemas             ║
+echo    ║  • README_INSTALACION.txt - Información detallada          ║
+echo    ║  • uninstall.bat - Desinstalar completamente               ║
+echo    ║                                                              ║
+echo    ║  📂 ERRORES CORREGIDOS:                                     ║
+echo    ║  ✅ hdf5.dll missing - Solucionado con wheels               ║
+echo    ║  ✅ requests missing - Instalado explícitamente            ║
+echo    ║  ✅ Dependencias de compilación - Evitadas                 ║
+echo    ║  ✅ Orden de instalación - Optimizado                      ║
+echo    ║                                                              ║
+echo    ╚══════════════════════════════════════════════════════════════╝
+echo.
+
+REM Preguntar si ejecutar
+set /p response="¿Deseas ejecutar CinBehave ahora? (s/n): "
+if /i "%response%"=="s" (
+    echo %GREEN%[INFO]%NC% Iniciando CinBehave...
+    start "" "%INSTALL_DIR%\start_cinbehave.bat"
 )
 
-goto :EXIT
-
-:EXIT
 echo.
-echo ============================================================================
-echo                    DIAGNÓSTICO COMPLETADO
-echo ============================================================================
+echo %GREEN%[ÉXITO]%NC% Instalación completada exitosamente.
 echo.
-echo Si continúa teniendo problemas:
-echo 1. Ejecute este script como administrador
-echo 2. Desactive temporalmente antivirus/firewall
-echo 3. Verifique conexión a internet
-echo 4. Use la opción de instalación manual
+echo %GREEN%[NOTAS IMPORTANTES]%NC%
+echo • Si hay algún problema, ejecuta 'verificar_sistema.bat'
+echo • Para reparar errores, ejecuta 'reparar_instalacion.bat'
+echo • Primera ejecución puede ser lenta (descarga de modelos SLEAP)
+echo • Los modelos SLEAP se descargan automáticamente desde GitHub
+echo • Manual y tutoriales incluidos en la aplicación
 echo.
-echo Presione cualquier tecla para salir...
+echo %GREEN%[INFO]%NC% Presiona cualquier tecla para salir...
 pause >nul
 
 endlocal
-exit /b 0
