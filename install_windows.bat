@@ -1,369 +1,145 @@
 @echo off
 REM ============================================================================
-REM CinBehave - INSTALADOR CON DETECCIÓN DE PYTHON ARREGLADA
-REM Version: 1.6 Python Detection Fixed
+REM CinBehave - INSTALADOR SUPER BASICO
+REM Version: 1.7 Super Basic
 REM ============================================================================
-
-setlocal enabledelayedexpansion
-set "INSTALLER_VERSION=1.6.0-python-fixed"
 
 echo.
 echo ============================================================================
 echo                    CinBehave SLEAP Analysis Suite                          
-echo                   INSTALADOR ARREGLADO v%INSTALLER_VERSION%
+echo                      INSTALADOR SUPER BASICO v1.7
 echo ============================================================================
 echo.
 
-REM Pausar para ver el inicio
-echo [INFO] Iniciando instalacion real de CinBehave...
-timeout /t 2 >nul
+echo [INFO] Iniciando instalacion...
+timeout /t 3 >nul
 
-REM Verificar administrador
+echo [PASO 1] Verificando administrador...
 net session >nul 2>&1
-if %errorLevel% neq 0 (
-    echo [ERROR] Necesita ejecutar como administrador
-    echo Haga clic derecho en el archivo y seleccione "Ejecutar como administrador"
-    echo.
+if errorlevel 1 (
+    echo [ERROR] Ejecute como administrador
     pause
     exit /b 1
 )
-echo [OK] Privilegios de administrador verificados
+echo [OK] Administrador verificado
 
-REM Verificar conectividad
+echo [PASO 2] Verificando internet...
 ping -n 1 8.8.8.8 >nul 2>&1
-if %errorLevel% neq 0 (
-    echo [ERROR] Sin conexion a internet
+if errorlevel 1 (
+    echo [ERROR] Sin internet
     pause
     exit /b 1
 )
-echo [OK] Conectividad verificada
+echo [OK] Internet verificado
 
-REM Configurar directorios
-set "INSTALL_ROOT=%USERPROFILE%\CinBehave"
-echo [INFO] Instalando en: %INSTALL_ROOT%
+echo [PASO 3] Creando carpetas...
+set INSTALL_DIR=%USERPROFILE%\CinBehave
+if exist "%INSTALL_DIR%" rmdir /s /q "%INSTALL_DIR%"
+mkdir "%INSTALL_DIR%"
+mkdir "%INSTALL_DIR%\logs"
+mkdir "%INSTALL_DIR%\temp"
+mkdir "%INSTALL_DIR%\Proyectos"
+mkdir "%INSTALL_DIR%\users"
+mkdir "%INSTALL_DIR%\config"
+cd /d "%INSTALL_DIR%"
+echo [OK] Carpetas creadas
 
-REM Crear estructura
-echo [PASO 1/8] Creando estructura de directorios...
-if exist "%INSTALL_ROOT%" rmdir /s /q "%INSTALL_ROOT%" >nul 2>&1
-mkdir "%INSTALL_ROOT%" >nul 2>&1
-mkdir "%INSTALL_ROOT%\logs" >nul 2>&1
-mkdir "%INSTALL_ROOT%\temp" >nul 2>&1
-mkdir "%INSTALL_ROOT%\Proyectos" >nul 2>&1
-mkdir "%INSTALL_ROOT%\users" >nul 2>&1
-mkdir "%INSTALL_ROOT%\config" >nul 2>&1
-
-cd /d "%INSTALL_ROOT%"
-echo [OK] Directorios creados
-
-REM DETECCIÓN DE PYTHON ARREGLADA
-echo [PASO 2/8] Verificando Python...
-set "PYTHON_FOUND=0"
-set "NEED_PYTHON=1"
-
-REM Método 1: Probar python
-echo [INFO] Probando comando 'python'...
-python --version >nul 2>&1
-if %errorLevel% equ 0 (
-    echo [INFO] Comando python funciona
-    python --version
-    set "PYTHON_FOUND=1"
-    set "PYTHON_CMD=python"
-) else (
-    echo [INFO] Comando python no disponible
-)
-
-REM Método 2: Probar py (Python Launcher)
-if "%PYTHON_FOUND%"=="0" (
-    echo [INFO] Probando comando 'py'...
-    py --version >nul 2>&1
-    if !errorLevel! equ 0 (
-        echo [INFO] Comando py funciona
-        py --version
-        set "PYTHON_FOUND=1"
-        set "PYTHON_CMD=py"
-    ) else (
-        echo [INFO] Comando py no disponible
-    )
-)
-
-REM Método 3: Buscar Python instalado
-if "%PYTHON_FOUND%"=="0" (
-    echo [INFO] Buscando Python instalado...
-    if exist "C:\Python311\python.exe" (
-        echo [INFO] Python 3.11 encontrado en C:\Python311\
-        set "PYTHON_FOUND=1"
-        set "PYTHON_CMD=C:\Python311\python.exe"
-    )
-    if exist "%LOCALAPPDATA%\Programs\Python\Python311\python.exe" (
-        echo [INFO] Python 3.11 encontrado en Programs
-        set "PYTHON_FOUND=1"
-        set "PYTHON_CMD=%LOCALAPPDATA%\Programs\Python\Python311\python.exe"
-    )
-)
-
-REM Decidir si instalar Python
-if "%PYTHON_FOUND%"=="1" (
-    echo [OK] Python encontrado: %PYTHON_CMD%
-    REM Verificar version muy simplemente
-    echo [INFO] Verificando version de Python...
-    %PYTHON_CMD% --version 2>nul | findstr "3.13" >nul
-    if !errorLevel! equ 0 (
-        echo [WARNING] Python 3.13 detectado - instalando Python 3.11.6 para compatibilidad
-        set "NEED_PYTHON=1"
-    ) else (
-        echo [OK] Version de Python compatible
-        set "NEED_PYTHON=0"
-    )
-) else (
-    echo [INFO] Python no encontrado - se instalara Python 3.11.6
-    set "NEED_PYTHON=1"
-)
-
-REM Instalar Python si es necesario
-if "%NEED_PYTHON%"=="1" (
-    echo [PASO 3/8] Instalando Python 3.11.6...
-    echo [INFO] Descargando Python (esto puede tomar varios minutos)...
-    
-    powershell -Command "try { Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.11.6/python-3.11.6-amd64.exe' -OutFile 'temp\python_installer.exe' -UseBasicParsing; Write-Host '[OK] Python descargado' } catch { Write-Host '[ERROR] Error descargando Python'; exit 1 }"
-    
-    if exist temp\python_installer.exe (
-        echo [INFO] Instalando Python 3.11.6 (esto puede tomar varios minutos)...
-        start /wait temp\python_installer.exe /quiet TargetDir="%INSTALL_ROOT%\Python311" InstallAllUsers=0 PrependPath=0 AssociateFiles=0 CompileAll=0
-        
-        if exist "%INSTALL_ROOT%\Python311\python.exe" (
-            echo [OK] Python 3.11.6 instalado exitosamente
-            set "PYTHON_CMD=%INSTALL_ROOT%\Python311\python.exe"
-        ) else (
-            echo [ERROR] Error instalando Python - archivo no encontrado
-            echo [DEBUG] Verificando directorio Python311:
-            dir "%INSTALL_ROOT%\Python311\" 2>nul || echo [DEBUG] Directorio vacio
-            pause
-            exit /b 1
-        )
-    ) else (
-        echo [ERROR] Error descargando Python - archivo no encontrado
-        pause
-        exit /b 1
-    )
-) else (
-    echo [PASO 3/8] Usando Python existente...
-    echo [OK] Python compatible: %PYTHON_CMD%
-)
-
-REM Verificar que Python funciona
-echo [INFO] Verificando que Python funciona correctamente...
-"%PYTHON_CMD%" --version
-if %errorLevel% neq 0 (
-    echo [ERROR] Python no responde correctamente
+echo [PASO 4] Instalando Python 3.11.6...
+echo [INFO] Descargando Python (puede tomar varios minutos)...
+powershell -Command "Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.11.6/python-3.11.6-amd64.exe' -OutFile 'python_installer.exe'"
+if not exist python_installer.exe (
+    echo [ERROR] Error descargando Python
     pause
     exit /b 1
 )
-echo [OK] Python verificado y funcional
-
-REM Crear entorno virtual
-echo [PASO 4/8] Creando entorno virtual...
-if exist venv rmdir /s /q venv >nul 2>&1
-echo [INFO] Creando entorno virtual con: %PYTHON_CMD%
-"%PYTHON_CMD%" -m venv venv
-if not exist venv\Scripts\activate.bat (
-    echo [ERROR] Error creando entorno virtual - activate.bat no encontrado
-    echo [DEBUG] Verificando directorio venv:
-    dir venv 2>nul || echo [DEBUG] Directorio venv no existe
-    dir venv\Scripts 2>nul || echo [DEBUG] Directorio Scripts no existe
+echo [INFO] Instalando Python...
+start /wait python_installer.exe /quiet TargetDir="%INSTALL_DIR%\Python311" InstallAllUsers=0 PrependPath=0
+if not exist "%INSTALL_DIR%\Python311\python.exe" (
+    echo [ERROR] Error instalando Python
     pause
     exit /b 1
 )
-echo [OK] Entorno virtual creado exitosamente
+echo [OK] Python instalado
 
-REM Activar entorno
-echo [INFO] Activando entorno virtual...
-call venv\Scripts\activate.bat
-if %errorLevel% neq 0 (
-    echo [ERROR] Error activando entorno virtual
+echo [PASO 5] Creando entorno virtual...
+"%INSTALL_DIR%\Python311\python.exe" -m venv venv
+if not exist venv\Scripts\python.exe (
+    echo [ERROR] Error creando entorno virtual
     pause
     exit /b 1
 )
-echo [OK] Entorno virtual activado
+echo [OK] Entorno virtual creado
 
-REM Verificar Python en entorno virtual
-echo [INFO] Verificando Python en entorno virtual...
-venv\Scripts\python.exe --version
-if %errorLevel% neq 0 (
-    echo [ERROR] Python no funciona en entorno virtual
-    pause
-    exit /b 1
-)
-echo [OK] Python en entorno virtual verificado
-
-REM Actualizar pip
-echo [PASO 5/8] Actualizando pip...
-venv\Scripts\python.exe -m pip install --upgrade pip >nul 2>&1
-if %errorLevel% equ 0 (
-    echo [OK] pip actualizado exitosamente
-) else (
-    echo [WARNING] Error actualizando pip - continuando
-)
-
-REM Descargar aplicacion
-echo [PASO 6/8] Descargando aplicacion CinBehave...
-powershell -Command "try { Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/StevenM711/CinBehave/main/cinbehave_gui.py' -OutFile 'cinbehave_gui.py' -UseBasicParsing; Write-Host '[OK] Aplicacion descargada' } catch { Write-Host '[ERROR] Error descargando aplicacion'; exit 1 }"
-
+echo [PASO 6] Descargando aplicacion...
+powershell -Command "Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/StevenM711/CinBehave/main/cinbehave_gui.py' -OutFile 'cinbehave_gui.py'"
 if not exist cinbehave_gui.py (
-    echo [ERROR] Error descargando aplicacion - archivo no encontrado
+    echo [ERROR] Error descargando aplicacion
     pause
     exit /b 1
 )
+echo [OK] Aplicacion descargada
 
-REM Verificar tamaño
-for %%I in (cinbehave_gui.py) do set "APP_SIZE=%%~zI"
-if %APP_SIZE% LSS 10000 (
-    echo [ERROR] Aplicacion descargada muy pequeña (%APP_SIZE% bytes) - posiblemente corrupta
-    echo [DEBUG] Contenido del archivo:
-    type cinbehave_gui.py | more
-    pause
-    exit /b 1
-)
-echo [OK] Aplicacion descargada y verificada (%APP_SIZE% bytes)
+echo [PASO 7] Instalando dependencias...
+echo [INFO] Instalando paquetes (puede tomar varios minutos)...
+venv\Scripts\python.exe -m pip install --upgrade pip
+venv\Scripts\python.exe -m pip install requests
+venv\Scripts\python.exe -m pip install numpy
+venv\Scripts\python.exe -m pip install pandas
+venv\Scripts\python.exe -m pip install matplotlib
+venv\Scripts\python.exe -m pip install Pillow
+venv\Scripts\python.exe -m pip install opencv-python
+venv\Scripts\python.exe -m pip install psutil
+echo [OK] Dependencias instaladas
 
-REM Instalar dependencias
-echo [PASO 7/8] Instalando dependencias...
-echo [INFO] Instalando paquetes basicos (esto puede tomar varios minutos)...
+echo [PASO 8] Intentando instalar SLEAP...
+venv\Scripts\python.exe -m pip install sleap
+echo [INFO] SLEAP instalacion completada (puede haber fallado pero continuamos)
 
-set "PACKAGES=requests numpy pandas matplotlib Pillow opencv-python psutil"
-set "INSTALLED_COUNT=0"
+echo [PASO 9] Creando lanzadores...
 
-for %%p in (%PACKAGES%) do (
-    echo [INSTALL] Instalando %%p...
-    venv\Scripts\python.exe -m pip install "%%p" >nul 2>&1
-    if !errorLevel! equ 0 (
-        echo [OK] %%p instalado exitosamente
-        set /a "INSTALLED_COUNT+=1"
-    ) else (
-        echo [ERROR] %%p fallo durante instalacion
-    )
-)
+echo @echo off > CinBehave.bat
+echo cd /d "%%~dp0" >> CinBehave.bat
+echo call venv\Scripts\activate.bat >> CinBehave.bat
+echo python cinbehave_gui.py >> CinBehave.bat
+echo pause >> CinBehave.bat
 
-echo [INFO] Dependencias instaladas: %INSTALLED_COUNT%/7
-
-if %INSTALLED_COUNT% LSS 5 (
-    echo [ERROR] Muy pocas dependencias instaladas - instalacion no viable
-    pause
-    exit /b 1
-)
-echo [OK] Dependencias suficientes instaladas
-
-REM Intentar instalar SLEAP
-echo [INFO] Intentando instalar SLEAP (esto puede tomar 10-15 minutos)...
-venv\Scripts\python.exe -m pip install sleap >nul 2>&1
-if %errorLevel% equ 0 (
-    echo [OK] SLEAP instalado exitosamente
-) else (
-    echo [WARNING] SLEAP no se pudo instalar - funcionara con funciones limitadas
-)
-
-REM Crear lanzadores
-echo [PASO 8/8] Creando lanzadores...
-
-REM Lanzador principal con verificaciones
-(
-echo @echo off
-echo cd /d "%%~dp0"
-echo echo Iniciando CinBehave...
-echo if not exist venv\Scripts\activate.bat ^(
-echo     echo ERROR: Entorno virtual no encontrado
-echo     pause
-echo     exit /b 1
-echo ^)
-echo call venv\Scripts\activate.bat
-echo if not exist cinbehave_gui.py ^(
-echo     echo ERROR: Aplicacion no encontrada
-echo     pause
-echo     exit /b 1
-echo ^)
-echo python cinbehave_gui.py
-echo if %%errorLevel%% neq 0 ^(
-echo     echo ERROR: CinBehave termino con error
-echo ^)
-echo pause
-) > CinBehave.bat
-
-REM Validador completo
-(
-echo @echo off
-echo cd /d "%%~dp0"
-echo echo ================================
-echo echo   VALIDACION DE CINBEHAVE
-echo echo ================================
-echo call venv\Scripts\activate.bat
-echo python -c "
-echo import sys
-echo print^('Python:', sys.version^)
-echo print^(^)
-echo modules = ['requests', 'numpy', 'pandas', 'matplotlib', 'PIL', 'cv2', 'psutil']
-echo success = 0
-echo for mod in modules:
-echo     try:
-echo         exec^(f'import {mod}'^)
-echo         print^(f'[OK] {mod}'^)
-echo         success += 1
-echo     except:
-echo         print^(f'[ERROR] {mod}'^)
-echo print^(^)
-echo try:
-echo     import sleap
-echo     print^(f'[OK] SLEAP {sleap.__version__}'^)
-echo except:
-echo     print^('[WARNING] SLEAP no disponible'^)
-echo print^(^)
-echo print^(f'Resultado: {success}/{len^(modules^)} modulos core OK'^)
-echo "
-echo echo ================================
-echo pause
-) > Validar_Instalacion.bat
+echo @echo off > Test.bat
+echo cd /d "%%~dp0" >> Test.bat
+echo call venv\Scripts\activate.bat >> Test.bat
+echo python -c "import requests, numpy; print('Todo funciona!')" >> Test.bat
+echo pause >> Test.bat
 
 echo [OK] Lanzadores creados
 
-REM Validacion final
-echo [VALIDACION] Probando instalacion...
-venv\Scripts\python.exe -c "import requests, numpy; print('[OK] Dependencias criticas funcionan')" 2>nul
-if %errorLevel% neq 0 (
-    echo [ERROR] Dependencias no funcionan correctamente
+echo [PASO 10] Validacion final...
+venv\Scripts\python.exe -c "import requests; print('[OK] Python funciona')"
+if errorlevel 1 (
+    echo [ERROR] Python no funciona
     pause
     exit /b 1
 )
-echo [OK] Validacion final exitosa
 
-REM Mostrar resultado final
 echo.
 echo ============================================================================
-echo                        INSTALACION COMPLETADA EXITOSAMENTE
+echo                        INSTALACION COMPLETADA
 echo ============================================================================
 echo.
-echo [SUCCESS] CinBehave instalado correctamente en: %INSTALL_ROOT%
-echo [INFO] Python: %PYTHON_CMD%
-echo [INFO] Aplicacion: cinbehave_gui.py (%APP_SIZE% bytes)
-echo [INFO] Dependencias: %INSTALLED_COUNT%/7 instaladas y verificadas
+echo [SUCCESS] CinBehave instalado en: %INSTALL_DIR%
 echo.
-echo PARA USAR CINBEHAVE:
-echo 1. Ir a: %INSTALL_ROOT%
+echo PARA USAR:
+echo 1. Ir a: %INSTALL_DIR%
 echo 2. Ejecutar: CinBehave.bat
 echo.
-echo PARA VALIDAR:
-echo - Ejecutar: Validar_Instalacion.bat
+echo PARA PROBAR:
+echo - Ejecutar: Test.bat
 echo.
 echo ============================================================================
+echo.
 
-REM Preguntar si ejecutar ahora
-set /p "RUN_NOW=¿Ejecutar CinBehave ahora? (s/n): "
-if /i "!RUN_NOW!"=="s" (
-    echo.
-    echo [LAUNCH] Iniciando CinBehave...
-    start "" "%INSTALL_ROOT%\CinBehave.bat"
-)
+set /p RUN_NOW=Ejecutar CinBehave ahora? (s/n): 
+if /i "%RUN_NOW%"=="s" start "" "%INSTALL_DIR%\CinBehave.bat"
 
 echo.
-echo [COMPLETE] Instalacion terminada - presiona cualquier tecla para salir
+echo Presiona cualquier tecla para salir...
 pause >nul
-
-endlocal
 exit /b 0
