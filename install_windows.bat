@@ -6,7 +6,7 @@ REM ============================================================================
 
 echo.
 echo ============================================================================
-echo                    CinBehave SLEAP Analysis Suite                          
+echo                    CinBehave SLEAP Analysis Suite
 echo                      INSTALADOR MEJORADO v1.8
 echo ============================================================================
 echo.
@@ -40,7 +40,7 @@ echo [INFO] Directorio de instalacion: %INSTALL_DIR%
 
 if exist "%INSTALL_DIR%" (
     echo [WARNING] Instalacion previa detectada
-    set /p OVERWRITE=Sobrescribir instalacion anterior? (s/n): 
+    set /p OVERWRITE=Sobrescribir instalacion anterior? (s/n):
     if /i not "%OVERWRITE%"=="s" (
         echo [INFO] Instalacion cancelada
         pause
@@ -333,7 +333,7 @@ echo ===========================================================================
 echo.
 
 REM Preguntar si ejecutar ahora
-set /p RUN_NOW=¿Ejecutar CinBehave ahora? (s/n): 
+set /p RUN_NOW=¿Ejecutar CinBehave ahora? (s/n):
 if /i "%RUN_NOW%"=="s" (
     echo.
     echo [INFO] Iniciando CinBehave...
