@@ -1,4 +1,5 @@
 @echo off
+setlocal EnableDelayedExpansion
 REM ============================================================================
 REM CinBehave - INSTALADOR MEJORADO CON PYTHON EN PATH
 REM Version: 1.8 Enhanced - Python PATH Integration
@@ -41,7 +42,7 @@ echo [INFO] Directorio de instalacion: %INSTALL_DIR%
 if exist "%INSTALL_DIR%" (
     echo [WARNING] Instalacion previa detectada
     set /p "OVERWRITE=Sobrescribir instalacion anterior? (s/n): "
-    if /i not "%OVERWRITE%"=="s" (
+    if /i not "!OVERWRITE!"=="s" (
         echo [INFO] Instalacion cancelada
         pause
         exit /b 0
@@ -345,4 +346,5 @@ echo.
 echo ¡Gracias por instalar CinBehave!
 echo Presiona cualquier tecla para salir...
 pause >nul
+endlocal
 exit /b 0
