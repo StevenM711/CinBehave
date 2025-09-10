@@ -225,7 +225,7 @@ echo cd /d "%%~dp0" >> Install_SLEAP.bat
 echo echo Instalando SLEAP... >> Install_SLEAP.bat
 echo call venv\Scripts\activate.bat >> Install_SLEAP.bat
 echo python -m pip install --upgrade pip >> Install_SLEAP.bat
-echo python -m pip install tensorflow >> Install_SLEAP.bat
+echo python -m pip install tensorflow==2.12.0 >> Install_SLEAP.bat
 echo python -m pip install sleap >> Install_SLEAP.bat
 echo python -c "import sleap; print('SLEAP instalado:', sleap.__version__)" >> Install_SLEAP.bat
 echo pause >> Install_SLEAP.bat
