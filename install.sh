@@ -122,7 +122,7 @@ EOF
     cat > requirements.txt << 'EOF'
 # Core dependencies
 sleap>=1.3.0
-tensorflow>=2.7.0,<2.13.0
+tensorflow>=2.13.0
 tkinter-tooltip==2.1.0
 pillow>=9.0.0
 numpy>=1.21.0
