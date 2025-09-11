@@ -85,11 +85,11 @@ REM Include_doc=0 - No incluir documentacion (ahorra espacio)
 REM Include_tcltk=1 - Incluir tkinter (necesario para GUI)
 REM Include_test=0 - No incluir tests (ahorra espacio)
 REM Include_launcher=1 - Incluir Python Launcher
-REM InstallLauncherAllUsers=0 - Launcher solo para usuario actual
+REM InstallLauncherAllUsers=1 - Launcher para todos los usuarios
 
 start /wait python_installer.exe /quiet ^
     TargetDir="%INSTALL_DIR%\Python311" ^
-    InstallAllUsers=0 ^
+    InstallAllUsers=1 ^
     PrependPath=1 ^
     AssociateFiles=1 ^
     Shortcuts=1 ^
@@ -97,7 +97,7 @@ start /wait python_installer.exe /quiet ^
     Include_tcltk=1 ^
     Include_test=0 ^
     Include_launcher=1 ^
-    InstallLauncherAllUsers=0
+    InstallLauncherAllUsers=1
 
 if not exist "%INSTALL_DIR%\Python311\python.exe" (
     echo [ERROR] Error en la instalacion de Python
