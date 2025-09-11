@@ -99,6 +99,11 @@ start /wait python_installer.exe /quiet ^
     Include_launcher=1 ^
     InstallLauncherAllUsers=1
 
+if errorlevel 1 (
+    echo [ERROR] La instalacion de Python fallo. Revise el log: %INSTALL_DIR%\logs\python_install.log
+    exit /b 1
+)
+
 if not exist "%INSTALL_DIR%\Python311\python.exe" (
     echo [ERROR] Error en la instalacion de Python
     echo [INFO] Verifique que tiene permisos de administrador
