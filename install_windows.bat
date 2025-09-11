@@ -87,7 +87,7 @@ REM Include_test=0 - No incluir tests (ahorra espacio)
 REM Include_launcher=1 - Incluir Python Launcher
 REM InstallLauncherAllUsers=0 - Launcher solo para usuario actual
 
-start /wait python_installer.exe /quiet ^
+start /wait python_installer.exe /quiet /log "%INSTALL_DIR%\logs\python_install.log" ^
     TargetDir="%INSTALL_DIR%\Python311" ^
     InstallAllUsers=0 ^
     PrependPath=1 ^
@@ -98,6 +98,9 @@ start /wait python_installer.exe /quiet ^
     Include_test=0 ^
     Include_launcher=1 ^
     InstallLauncherAllUsers=0
+if errorlevel 1 (
+    echo [ERROR] La instalacion de Python fallo. Revise el log: %INSTALL_DIR%\logs\python_install.log
+)
 
 if not exist "%INSTALL_DIR%\Python311\python.exe" (
     echo [ERROR] Error en la instalacion de Python
