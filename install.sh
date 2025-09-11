@@ -123,6 +123,7 @@ EOF
 
     # Instalar dependencias
     pip install -r requirements.txt
+    pip install "tensorflow>=2.13.0"
     
     # Crear estructura de directorios
     show_step "8/10 Creando estructura de directorios..."
