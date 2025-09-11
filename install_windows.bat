@@ -114,6 +114,7 @@ if not exist "%INSTALL_DIR%\Python311\python.exe" (
 REM Limpiar instalador
 del python_installer.exe >nul 2>&1
 
+
 echo [OK] Python 3.11.6 instalado correctamente
 
 echo [PASO 5] Actualizando variables de entorno...
