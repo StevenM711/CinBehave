@@ -147,33 +147,22 @@ if not exist cinbehave_gui.py (
 )
 echo [OK] Aplicacion principal descargada
 
-echo [PASO 8] Instalando dependencias basicas...
+echo [PASO 8] Instalando dependencias...
 echo [INFO] Activando entorno virtual...
 call venv\Scripts\activate.bat
 
 echo [INFO] Actualizando pip a la ultima version...
 python -m pip install --upgrade pip
 
-echo [INFO] Instalando dependencias principales (puede tomar varios minutos)...
-python -m pip install requests
-python -m pip install numpy
-python -m pip install pandas
-python -m pip install matplotlib
-python -m pip install Pillow
-python -m pip install opencv-python
-python -m pip install psutil
-python -m pip install seaborn
+echo [INFO] Copiando archivo de dependencias...
+copy "%~dp0requirements.txt" requirements.txt
 
-echo [OK] Dependencias basicas instaladas
+echo [INFO] Instalando dependencias desde requirements.txt (puede tomar varios minutos)...
+python -m pip install -r requirements.txt
 
-echo [PASO 9] Instalando TensorFlow y SLEAP...
-echo [INFO] Instalando TensorFlow (requerido por SLEAP)...
-python -m pip install tensorflow
+echo [OK] Dependencias instaladas
 
-echo [INFO] Instalando SLEAP (puede tomar varios minutos)...
-python -m pip install sleap
-
-echo [INFO] Verificando instalacion de SLEAP...
+echo [PASO 9] Verificando instalacion de SLEAP...
 python -c "import sleap; print('[SUCCESS] SLEAP version:', sleap.__version__)" 2>nul
 if errorlevel 1 (
     echo [WARNING] SLEAP puede no haberse instalado correctamente
@@ -229,11 +218,11 @@ REM Crear instalador de SLEAP independiente
 echo @echo off > Install_SLEAP.bat
 echo title Instalador de SLEAP para CinBehave >> Install_SLEAP.bat
 echo cd /d "%%~dp0" >> Install_SLEAP.bat
-echo echo Instalando SLEAP... >> Install_SLEAP.bat
+echo echo Instalando dependencias... >> Install_SLEAP.bat
 echo call venv\Scripts\activate.bat >> Install_SLEAP.bat
 echo python -m pip install --upgrade pip >> Install_SLEAP.bat
-echo python -m pip install tensorflow >> Install_SLEAP.bat
-echo python -m pip install sleap >> Install_SLEAP.bat
+echo copy "%%~dp0requirements.txt" requirements.txt >> Install_SLEAP.bat
+echo python -m pip install -r requirements.txt >> Install_SLEAP.bat
 echo python -c "import sleap; print('SLEAP instalado:', sleap.__version__)" >> Install_SLEAP.bat
 echo pause >> Install_SLEAP.bat
 
