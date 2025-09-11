@@ -75,10 +75,8 @@ if not exist python_installer.exe (
 
 echo [INFO] Verificando servicio Windows Installer...
 :check_msiserver
-for /f "tokens=4" %%s in ('sc query msiserver ^| find "STATE"') do set "MSI_STATUS=%%s"
-if /i "!MSI_STATUS!"=="RUNNING" (
-    echo [OK] Servicio Windows Installer activo
-) else (
+sc query msiserver | findstr /I "RUNNING" >nul
+if errorlevel 1 (
     echo [ERROR] El servicio Windows Installer (msiserver) no esta activo.
     echo [INFO] Para iniciarlo manualmente, ejecute: net start msiserver
     set /p "RETRY=¿Reintentar verificacion tras iniciarlo? (s/n): "
@@ -86,6 +84,8 @@ if /i "!MSI_STATUS!"=="RUNNING" (
     echo [INFO] Instalacion cancelada hasta que el servicio este activo.
     pause
     exit /b 1
+) else (
+    echo [OK] Servicio Windows Installer activo
 )
 
 echo [INFO] Instalando Python 3.11.6 (esto puede tomar unos minutos)...
