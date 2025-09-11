@@ -117,42 +117,10 @@ EOF
     
     # Instalar dependencias Python
     show_step "7/10 Instalando dependencias Python..."
-    
-    # Crear requirements.txt
-    cat > requirements.txt << 'EOF'
-# Core dependencies
-sleap>=1.3.0
-tensorflow>=2.7.0,<2.13.0
-tkinter-tooltip==2.1.0
-pillow>=9.0.0
-numpy>=1.21.0
-pandas>=1.3.0
-matplotlib>=3.5.0
-seaborn>=0.11.0
-scipy>=1.7.0
-scikit-learn>=1.0.0
-opencv-python>=4.5.0
-psutil>=5.8.0
-reportlab>=3.6.0
-fpdf2>=2.5.0
-python-dateutil>=2.8.0
-tqdm>=4.62.0
 
-# Video processing
-imageio>=2.13.0
-imageio-ffmpeg>=0.4.0
+    # Copiar archivo de dependencias desde el repositorio
+    cp "$(dirname "$0")/requirements.txt" requirements.txt
 
-# Data handling
-openpyxl>=3.0.0
-xlsxwriter>=3.0.0
-h5py>=3.6.0
-
-# GUI enhancements
-customtkinter>=5.0.0
-CTkMessagebox>=2.0.0
-CTkListbox>=1.0.0
-EOF
-    
     # Instalar dependencias
     pip install -r requirements.txt
     
