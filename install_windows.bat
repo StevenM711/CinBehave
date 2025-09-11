@@ -85,11 +85,11 @@ REM Include_doc=0 - No incluir documentacion (ahorra espacio)
 REM Include_tcltk=1 - Incluir tkinter (necesario para GUI)
 REM Include_test=0 - No incluir tests (ahorra espacio)
 REM Include_launcher=1 - Incluir Python Launcher
-REM InstallLauncherAllUsers=0 - Launcher solo para usuario actual
+REM InstallLauncherAllUsers=1 - Launcher para todos los usuarios
 
-start /wait python_installer.exe /quiet /log "%INSTALL_DIR%\logs\python_install.log" ^
+start /wait python_installer.exe /quiet ^
     TargetDir="%INSTALL_DIR%\Python311" ^
-    InstallAllUsers=0 ^
+    InstallAllUsers=1 ^
     PrependPath=1 ^
     AssociateFiles=1 ^
     Shortcuts=1 ^
@@ -97,9 +97,11 @@ start /wait python_installer.exe /quiet /log "%INSTALL_DIR%\logs\python_install.
     Include_tcltk=1 ^
     Include_test=0 ^
     Include_launcher=1 ^
-    InstallLauncherAllUsers=0
+    InstallLauncherAllUsers=1
+
 if errorlevel 1 (
     echo [ERROR] La instalacion de Python fallo. Revise el log: %INSTALL_DIR%\logs\python_install.log
+    exit /b 1
 )
 
 if not exist "%INSTALL_DIR%\Python311\python.exe" (
@@ -111,6 +113,7 @@ if not exist "%INSTALL_DIR%\Python311\python.exe" (
 
 REM Limpiar instalador
 del python_installer.exe >nul 2>&1
+
 
 echo [OK] Python 3.11.6 instalado correctamente
 
