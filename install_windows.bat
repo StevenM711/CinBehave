@@ -36,7 +36,7 @@ echo [INFO] Directorio de instalacion: %INSTALL_DIR%
 if exist "%INSTALL_DIR%" (
     echo [WARNING] Instalacion previa detectada
     set /p "OVERWRITE=Sobrescribir instalacion anterior? s/n: "
-    if /i not "%OVERWRITE%"=="s" goto ABORT_INSTALL
+    if /i not "!OVERWRITE!"=="s" goto ABORT_INSTALL
     echo [INFO] Eliminando instalacion anterior...
     rmdir /s /q "%INSTALL_DIR%"
 )
