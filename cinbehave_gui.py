@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 CinBehave - SLEAP Analysis GUI for Windows
-Version: 1.0 - SLEAP Integration Edition
+Version: 1.0 - Beautiful Edition with System Monitor
 Complete interface for animal behavior analysis using SLEAP
 """
 
@@ -16,7 +16,6 @@ import json
 import time
 import psutil
 import logging
-import requests
 from pathlib import Path
 from datetime import datetime
 import numpy as np
@@ -32,17 +31,7 @@ try:
 except ImportError:
     MATPLOTLIB_AVAILABLE = False
 
-# Verificar SLEAP
-try:
-    import sleap
-    SLEAP_AVAILABLE = True
-    SLEAP_VERSION = sleap.__version__
-except ImportError:
-    SLEAP_AVAILABLE = False
-    SLEAP_VERSION = "No instalado"
-
 # Configurar logging
-Path("logs").mkdir(exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -51,429 +40,6 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
-
-class SLEAPProgressWindow:
-    """Ventana de progreso para predicciones SLEAP"""
-    def __init__(self, parent, videos_to_process, models_info, output_folder):
-        self.parent = parent
-        self.videos_to_process = videos_to_process
-        self.models_info = models_info
-        self.output_folder = output_folder
-        self.total_videos = len(videos_to_process)
-        self.current_video = 0
-        self.processing = True
-        self.success = False
-        self.results = []
-        
-        # Crear ventana
-        self.window = tk.Toplevel(parent.root)
-        self.window.title("🧠 Procesando Predicciones SLEAP - CinBehave")
-        self.window.geometry("700x500")
-        self.window.configure(bg=ModernColors.PRIMARY_DARK)
-        self.window.resizable(False, False)
-        self.window.transient(parent.root)
-        self.window.grab_set()
-        
-        # Centrar ventana
-        self.center_window()
-        
-        self.setup_ui()
-        
-        # Iniciar procesamiento en hilo separado
-        self.process_thread = threading.Thread(target=self.process_videos_thread, daemon=True)
-        self.process_thread.start()
-        
-        # Manejar cierre de ventana
-        self.window.protocol("WM_DELETE_WINDOW", self.on_closing)
-    
-    def center_window(self):
-        """Centrar ventana en pantalla"""
-        self.window.update_idletasks()
-        width = 700
-        height = 500
-        x = (self.window.winfo_screenwidth() // 2) - (width // 2)
-        y = (self.window.winfo_screenheight() // 2) - (height // 2)
-        self.window.geometry(f"{width}x{height}+{x}+{y}")
-    
-    def setup_ui(self):
-        """Configurar interfaz de progreso"""
-        # Header
-        header_frame = tk.Frame(self.window, bg=ModernColors.ACCENT_PURPLE, height=80)
-        header_frame.pack(fill="x")
-        header_frame.pack_propagate(False)
-        
-        tk.Label(header_frame, text="🧠 Procesando Videos con SLEAP", 
-                font=("Segoe UI", 18, "bold"), 
-                fg=ModernColors.TEXT_PRIMARY, 
-                bg=ModernColors.ACCENT_PURPLE).pack(expand=True)
-        
-        # Container principal
-        main_container = tk.Frame(self.window, bg=ModernColors.PRIMARY_DARK)
-        main_container.pack(fill="both", expand=True, padx=30, pady=30)
-        
-        # Información general
-        info_frame = tk.Frame(main_container, bg=ModernColors.CARD_BG, relief="solid", bd=1)
-        info_frame.pack(fill="x", pady=(0, 20))
-        
-        tk.Label(info_frame, text="📊 Información del Procesamiento", 
-                font=("Segoe UI", 14, "bold"), 
-                fg=ModernColors.TEXT_PRIMARY, 
-                bg=ModernColors.CARD_BG).pack(pady=(15, 10))
-        
-        self.info_label = tk.Label(info_frame, 
-                                  text=f"Videos a procesar: {self.total_videos}\n"
-                                       f"Modelos: {len(self.models_info)} archivos\n"
-                                       f"Destino: {self.output_folder}", 
-                                  font=("Segoe UI", 11), 
-                                  fg=ModernColors.TEXT_SECONDARY, 
-                                  bg=ModernColors.CARD_BG,
-                                  justify="left")
-        self.info_label.pack(pady=(0, 15))
-        
-        # Progreso general
-        progress_frame = tk.Frame(main_container, bg=ModernColors.CARD_BG, relief="solid", bd=1)
-        progress_frame.pack(fill="x", pady=(0, 20))
-        
-        tk.Label(progress_frame, text="⏳ Progreso General", 
-                font=("Segoe UI", 14, "bold"), 
-                fg=ModernColors.TEXT_PRIMARY, 
-                bg=ModernColors.CARD_BG).pack(pady=(15, 10))
-        
-        self.progress_label = tk.Label(progress_frame, text="Video 0 de " + str(self.total_videos), 
-                                      font=("Segoe UI", 12), 
-                                      fg=ModernColors.TEXT_PRIMARY, 
-                                      bg=ModernColors.CARD_BG)
-        self.progress_label.pack(pady=5)
-        
-        # Barra de progreso
-        progress_container = tk.Frame(progress_frame, bg=ModernColors.CARD_BG)
-        progress_container.pack(fill="x", padx=20, pady=10)
-        
-        self.progress_bar = ttk.Progressbar(progress_container, mode='determinate', length=600)
-        self.progress_bar.pack(fill="x")
-        self.progress_bar['maximum'] = self.total_videos
-        
-        self.percentage_label = tk.Label(progress_frame, text="0%", 
-                                        font=("Segoe UI", 11, "bold"), 
-                                        fg=ModernColors.ACCENT_GREEN, 
-                                        bg=ModernColors.CARD_BG)
-        self.percentage_label.pack(pady=(5, 15))
-        
-        # Video actual
-        current_frame = tk.Frame(main_container, bg=ModernColors.CARD_BG, relief="solid", bd=1)
-        current_frame.pack(fill="x", pady=(0, 20))
-        
-        tk.Label(current_frame, text="🎬 Procesando", 
-                font=("Segoe UI", 14, "bold"), 
-                fg=ModernColors.TEXT_PRIMARY, 
-                bg=ModernColors.CARD_BG).pack(pady=(15, 10))
-        
-        self.current_video_label = tk.Label(current_frame, text="Iniciando SLEAP...", 
-                                           font=("Segoe UI", 10), 
-                                           fg=ModernColors.TEXT_SECONDARY, 
-                                           bg=ModernColors.CARD_BG,
-                                           wraplength=600)
-        self.current_video_label.pack(pady=(0, 15))
-        
-        # Botón cancelar
-        button_frame = tk.Frame(main_container, bg=ModernColors.PRIMARY_DARK)
-        button_frame.pack(fill="x")
-        
-        self.cancel_button = tk.Button(button_frame, text="❌ Cancelar", 
-                                      command=self.cancel_processing,
-                                      font=("Segoe UI", 11, "bold"),
-                                      fg=ModernColors.TEXT_PRIMARY,
-                                      bg=ModernColors.ACCENT_RED,
-                                      activebackground="#f25255",
-                                      relief="flat", padx=20, pady=8)
-        self.cancel_button.pack()
-    
-    def process_videos_thread(self):
-        """Hilo para procesar videos con SLEAP"""
-        try:
-            for i, video_path in enumerate(self.videos_to_process):
-                if not self.processing:
-                    break
-                
-                self.current_video = i + 1
-                video_name = Path(video_path).name
-                output_filename = f"{Path(video_name).stem}_predictions.slp"
-                output_path = self.output_folder / output_filename
-                
-                # Actualizar UI
-                self.window.after(0, self.update_progress, video_name, video_path)
-                
-                # Ejecutar SLEAP
-                try:
-                    success = self.run_sleap_prediction(video_path, output_path)
-                    if success:
-                        self.results.append({
-                            'video': video_name,
-                            'output': str(output_path),
-                            'status': 'success'
-                        })
-                        logging.info(f"SLEAP procesado: {video_name}")
-                    else:
-                        self.results.append({
-                            'video': video_name,
-                            'output': str(output_path),
-                            'status': 'error'
-                        })
-                        logging.error(f"Error procesando {video_name}")
-                        
-                except Exception as e:
-                    logging.error(f"Error procesando {video_name}: {e}")
-                    self.window.after(0, self.show_error, f"Error procesando {video_name}:\n{e}")
-                    return
-                
-                # Pequeña pausa para no saturar la UI
-                time.sleep(0.1)
-            
-            if self.processing:
-                self.success = True
-                self.window.after(0, self.processing_completed)
-                
-        except Exception as e:
-            logging.error(f"Error en procesamiento SLEAP: {e}")
-            self.window.after(0, self.show_error, f"Error general en SLEAP:\n{e}")
-    
-    def run_sleap_prediction(self, video_path, output_path):
-        """Ejecutar predicción SLEAP"""
-        try:
-            cmd = [
-                'sleap-track',
-                '-m', str(self.models_info['centroid']),
-                '-m', str(self.models_info['centered_instance']),
-                '-o', str(output_path),
-                str(video_path)
-            ]
-            
-            # Ejecutar comando
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)  # 1 hora timeout
-            
-            if result.returncode == 0:
-                return True
-            else:
-                logging.error(f"SLEAP error: {result.stderr}")
-                return False
-                
-        except subprocess.TimeoutExpired:
-            logging.error(f"Timeout procesando {video_path}")
-            return False
-        except Exception as e:
-            logging.error(f"Error ejecutando SLEAP: {e}")
-            return False
-    
-    def update_progress(self, video_name, video_path):
-        """Actualizar interfaz de progreso"""
-        # Actualizar contador
-        self.progress_label.config(text=f"Video {self.current_video} de {self.total_videos}")
-        
-        # Actualizar barra de progreso
-        self.progress_bar['value'] = self.current_video
-        
-        # Actualizar porcentaje
-        percentage = int((self.current_video / self.total_videos) * 100)
-        self.percentage_label.config(text=f"{percentage}%")
-        
-        # Actualizar video actual
-        self.current_video_label.config(text=f"Procesando: {video_name}\nRuta: {video_path}\n\n⚙️ Ejecutando modelos SLEAP...")
-        
-        self.window.update_idletasks()
-    
-    def processing_completed(self):
-        """Procesamiento completado exitosamente"""
-        success_count = len([r for r in self.results if r['status'] == 'success'])
-        error_count = len([r for r in self.results if r['status'] == 'error'])
-        
-        self.progress_label.config(text="¡Procesamiento SLEAP completado!")
-        self.percentage_label.config(text="100%", fg=ModernColors.ACCENT_GREEN)
-        
-        result_text = f"✅ Procesamiento completado\n\n"
-        result_text += f"Videos procesados exitosamente: {success_count}\n"
-        if error_count > 0:
-            result_text += f"Videos con errores: {error_count}\n"
-        result_text += f"\nArchivos .slp guardados en:\n{self.output_folder}"
-        
-        self.current_video_label.config(text=result_text)
-        
-        self.cancel_button.config(text="✅ Cerrar", bg=ModernColors.ACCENT_GREEN,
-                                 activebackground="#67f297", command=self.close_success)
-    
-    def show_error(self, error_message):
-        """Mostrar error en el procesamiento"""
-        self.processing = False
-        self.current_video_label.config(text=f"❌ Error durante el procesamiento:\n{error_message}")
-        self.cancel_button.config(text="❌ Cerrar", command=self.close_error)
-    
-    def cancel_processing(self):
-        """Cancelar procesamiento"""
-        if messagebox.askyesno("⚠️ Cancelar", "¿Estás seguro de que deseas cancelar el procesamiento SLEAP?"):
-            self.processing = False
-            self.window.destroy()
-    
-    def close_success(self):
-        """Cerrar ventana después de éxito"""
-        self.window.destroy()
-    
-    def close_error(self):
-        """Cerrar ventana después de error"""
-        self.processing = False
-        self.window.destroy()
-    
-    def on_closing(self):
-        """Manejar cierre de ventana"""
-        if self.success:
-            self.window.destroy()
-        else:
-            self.cancel_processing()
-
-class SLEAPPredictor:
-    """Clase para manejar predicciones SLEAP"""
-    
-    def __init__(self, parent):
-        self.parent = parent
-        self.models_urls = {
-            'centroid': 'https://github.com/StevenM711/CinBehave/raw/main/models/240604_140339.centroid.n=3561',
-            'centered_instance': 'https://github.com/StevenM711/CinBehave/raw/main/models/240604_151646.centered_instance.n=3561'
-        }
-    
-    def check_sleap_installation(self):
-        """Verificar instalación de SLEAP"""
-        if not SLEAP_AVAILABLE:
-            return False, "SLEAP no está instalado"
-        
-        # Verificar comando sleap-track
-        try:
-            result = subprocess.run(['sleap-track', '--help'], 
-                                  capture_output=True, text=True, timeout=10)
-            if result.returncode == 0:
-                return True, f"SLEAP {SLEAP_VERSION} disponible"
-            else:
-                return False, "Comando sleap-track no encontrado"
-        except Exception as e:
-            return False, f"Error verificando SLEAP: {e}"
-    
-    def detect_hardware(self):
-        """Detectar hardware disponible"""
-        gpu_available = False
-        gpu_info = "CPU solamente"
-        
-        try:
-            import tensorflow as tf
-            gpus = tf.config.list_physical_devices('GPU')
-            if gpus:
-                gpu_available = True
-                gpu_info = f"GPU disponible: {len(gpus)} dispositivo(s)"
-        except Exception as e:
-            logging.warning(f"Error detectando GPU: {e}")
-        
-        return gpu_available, gpu_info
-    
-    def setup_project_structure(self, project_name):
-        """Configurar estructura de carpetas para SLEAP"""
-        project_folder = self.parent.projects_root_dir / project_name
-        
-        # Crear carpetas necesarias
-        folders = {
-            'videos': project_folder / "Videos",
-            'data_sleap': project_folder / "Data_Sleap", 
-            'models': project_folder / "models"
-        }
-        
-        for folder_name, folder_path in folders.items():
-            folder_path.mkdir(parents=True, exist_ok=True)
-            logging.info(f"Carpeta {folder_name} verificada: {folder_path}")
-        
-        return folders
-    
-    def download_models(self, models_folder):
-        """Descargar modelos desde GitHub"""
-        downloaded_models = {}
-        
-        for model_name, url in self.models_urls.items():
-            try:
-                # Extraer nombre de archivo de la URL
-                filename = url.split('/')[-1]
-                model_path = models_folder / filename
-                
-                if model_path.exists():
-                    logging.info(f"Modelo ya existe: {filename}")
-                    downloaded_models[model_name] = model_path
-                    continue
-                
-                logging.info(f"Descargando modelo: {filename}")
-                
-                response = requests.get(url, stream=True, timeout=300)
-                response.raise_for_status()
-                
-                with open(model_path, 'wb') as f:
-                    for chunk in response.iter_content(chunk_size=8192):
-                        f.write(chunk)
-                
-                downloaded_models[model_name] = model_path
-                logging.info(f"Modelo descargado: {filename}")
-                
-            except Exception as e:
-                logging.error(f"Error descargando modelo {model_name}: {e}")
-                raise Exception(f"Error descargando modelo {model_name}: {e}")
-        
-        return downloaded_models
-    
-    def get_video_files(self, videos_folder):
-        """Obtener lista de archivos de video"""
-        video_extensions = ('.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm', '.m4v')
-        video_files = []
-        
-        if videos_folder.exists():
-            for file_path in videos_folder.iterdir():
-                if file_path.is_file() and file_path.suffix.lower() in video_extensions:
-                    video_files.append(file_path)
-        
-        return video_files
-    
-    def run_prediction(self, project_name):
-        """Ejecutar predicción completa"""
-        try:
-            # 1. Verificar SLEAP
-            sleap_ok, sleap_msg = self.check_sleap_installation()
-            if not sleap_ok:
-                return False, f"Error con SLEAP: {sleap_msg}"
-            
-            # 2. Detectar hardware
-            gpu_available, gpu_info = self.detect_hardware()
-            logging.info(f"Hardware detectado: {gpu_info}")
-            
-            # 3. Configurar estructura de carpetas
-            folders = self.setup_project_structure(project_name)
-            
-            # 4. Descargar modelos
-            self.parent.update_status("📥 Descargando modelos SLEAP...")
-            models = self.download_models(folders['models'])
-            
-            # 5. Obtener videos
-            videos = self.get_video_files(folders['videos'])
-            if not videos:
-                return False, "No se encontraron videos en la carpeta del proyecto"
-            
-            # 6. Ejecutar predicciones con ventana de progreso
-            self.parent.update_status("🧠 Iniciando predicciones SLEAP...")
-            
-            progress_window = SLEAPProgressWindow(
-                self.parent, 
-                videos, 
-                models, 
-                folders['data_sleap']
-            )
-            
-            # Esperar a que termine el procesamiento
-            self.parent.root.wait_window(progress_window.window)
-            
-            return progress_window.success, "Predicciones completadas" if progress_window.success else "Error en predicciones"
-            
-        except Exception as e:
-            logging.error(f"Error en predicción SLEAP: {e}")
-            return False, f"Error en predicción: {e}"
 
 class TutorialSystem:
     """Sistema de tutorial para CinBehave"""
@@ -501,7 +67,6 @@ class TutorialSystem:
             "user_creation_shown": False,
             "project_management_shown": False,
             "video_selection_shown": False,
-            "sleap_explained": False,
             "monitor_explained": False,
             "tutorial_completed": False
         }
@@ -529,7 +94,6 @@ class TutorialSystem:
             "user_creation_shown": False,
             "project_management_shown": False,
             "video_selection_shown": False,
-            "sleap_explained": False,
             "monitor_explained": False,
             "tutorial_completed": False
         }
@@ -1641,9 +1205,6 @@ class CinBehaveGUI:
         # NUEVO: Sistema de tutorial
         self.tutorial = TutorialSystem(self)
         
-        # NUEVO: Predictor SLEAP
-        self.sleap_predictor = SLEAPPredictor(self)
-        
         # Configurar fuentes modernas
         self.fonts = {
             'title': ('Segoe UI', 24, 'bold'),
@@ -1661,56 +1222,11 @@ class CinBehaveGUI:
         # Mostrar splash screen elegante
         self.show_elegant_splash()
         
-        # Verificar dependencias críticas
-        self.check_critical_dependencies()
-        
         # Inicializar sistema
         self.initialize_system()
         
         # Mostrar selección de usuario
         self.show_user_selection()
-    
-    def check_critical_dependencies(self):
-        """Verificar dependencias críticas al inicio"""
-        missing_deps = []
-        warnings = []
-        
-        # Verificar SLEAP
-        if not SLEAP_AVAILABLE:
-            missing_deps.append("SLEAP")
-        else:
-            warnings.append(f"✅ SLEAP {SLEAP_VERSION} disponible")
-        
-        # Verificar matplotlib
-        if not MATPLOTLIB_AVAILABLE:
-            warnings.append("⚠️ Matplotlib no disponible - Gráficos limitados")
-        else:
-            warnings.append("✅ Matplotlib disponible")
-        
-        # Verificar TensorFlow/GPU
-        try:
-            import tensorflow as tf
-            gpus = tf.config.list_physical_devices('GPU')
-            if gpus:
-                warnings.append(f"✅ GPU disponible: {len(gpus)} dispositivo(s)")
-            else:
-                warnings.append("⚠️ No se detectó GPU - Usando CPU")
-        except ImportError:
-            warnings.append("⚠️ TensorFlow no disponible")
-        
-        # Mostrar resultados
-        if missing_deps:
-            error_msg = f"❌ DEPENDENCIAS FALTANTES:\n\n"
-            error_msg += "\n".join([f"• {dep}" for dep in missing_deps])
-            error_msg += f"\n\nPor favor, instala las dependencias faltantes:\n"
-            error_msg += f"pip install {' '.join(missing_deps).lower()}"
-            
-            messagebox.showerror("❌ Error de Dependencias", error_msg)
-        
-        if warnings:
-            status_msg = "🔧 ESTADO DEL SISTEMA:\n\n"
-            status_msg += "\n".join(warnings)
-            logging.info("Estado del sistema verificado")
     
     def setup_modern_styles(self):
         """Configurar estilos modernos y elegantes"""
@@ -1902,14 +1418,6 @@ class CinBehaveGUI:
                              bg=ModernColors.PRIMARY_DARK)
         desc_label.pack(pady=20)
         
-        # Info de SLEAP
-        sleap_info = f"SLEAP: {'✅ ' + SLEAP_VERSION if SLEAP_AVAILABLE else '❌ No instalado'}"
-        info_label = tk.Label(content_frame, text=sleap_info, 
-                             font=self.fonts['small'], 
-                             fg=ModernColors.ACCENT_GREEN if SLEAP_AVAILABLE else ModernColors.ACCENT_RED, 
-                             bg=ModernColors.PRIMARY_DARK)
-        info_label.pack()
-        
         # Barra de progreso moderna
         progress_frame = tk.Frame(content_frame, bg=ModernColors.PRIMARY_DARK)
         progress_frame.pack(fill="x", pady=20)
@@ -1934,7 +1442,7 @@ class CinBehaveGUI:
                 progress_fill.configure(width=width)
                 
                 if i < 25:
-                    status_label.config(text="Verificando SLEAP...")
+                    status_label.config(text="Cargando configuración...")
                 elif i < 50:
                     status_label.config(text="Inicializando módulos de IA...")
                 elif i < 75:
@@ -1978,16 +1486,13 @@ class CinBehaveGUI:
                     "system_info": self.get_system_info(),
                     "ui_animations": True,
                     "high_dpi": True,
-                    "projects_directory": str(self.projects_root_dir),
-                    "sleap_available": SLEAP_AVAILABLE,
-                    "sleap_version": SLEAP_VERSION
+                    "projects_directory": str(self.projects_root_dir)  # NUEVA: Configuración del directorio de proyectos
                 }
                 with open(config_file, 'w') as f:
                     json.dump(windows_config, f, indent=2)
             
             logging.info("Sistema avanzado inicializado correctamente")
             logging.info(f"Directorio de proyectos: {self.projects_root_dir}")
-            logging.info(f"SLEAP disponible: {SLEAP_AVAILABLE} ({SLEAP_VERSION})")
             
         except Exception as e:
             logging.error(f"Error inicializando sistema: {e}")
@@ -2018,9 +1523,7 @@ class CinBehaveGUI:
                 "memory_gb": round(psutil.virtual_memory().total / (1024**3)),
                 "python_version": sys.version,
                 "architecture": os.environ.get('PROCESSOR_ARCHITECTURE', 'Unknown'),
-                "gpu_support": self.check_gpu_support(),
-                "sleap_available": SLEAP_AVAILABLE,
-                "sleap_version": SLEAP_VERSION
+                "gpu_support": self.check_gpu_support()
             }
             return info
         except:
@@ -2216,7 +1719,7 @@ class CinBehaveGUI:
         footer_container.pack(fill="both", expand=True, padx=30, pady=15)
         
         system_info = self.get_system_info()
-        info_text = f"💻 {system_info.get('os', 'Unknown')} | 🧠 RAM: {system_info.get('memory_gb', '?')}GB | 🎮 GPU: {system_info.get('gpu_support', 'Unknown')} | 🔬 SLEAP: {SLEAP_VERSION if SLEAP_AVAILABLE else 'No instalado'} | 📊 Monitor: {'Disponible' if MATPLOTLIB_AVAILABLE else 'Básico'}"
+        info_text = f"💻 {system_info.get('os', 'Unknown')} | 🧠 RAM: {system_info.get('memory_gb', '?')}GB | 🎮 GPU: {system_info.get('gpu_support', 'Unknown')} | 📊 Monitor: {'Disponible' if MATPLOTLIB_AVAILABLE else 'Básico'}"
         
         tk.Label(footer_container, text=info_text, 
                 font=self.fonts['small'], 
@@ -2384,11 +1887,8 @@ class CinBehaveGUI:
             self.root.deiconify()
             self.create_main_interface()
             
-            # NUEVO: Mostrar tutorial de gestión de proyectos
-            self.show_project_management_tutorial()
-            
             user_info = self.get_user_info()
-            welcome_msg = f"¡Bienvenido de vuelta, {user_info.get('full_name', self.current_user)}! 🎉\n\n✅ Sistema listo para análisis\n📊 Monitor de recursos disponible\n🧠 SLEAP {SLEAP_VERSION if SLEAP_AVAILABLE else 'no disponible'}\n🎬 Funciones de predicción preparadas"
+            welcome_msg = f"¡Bienvenido de vuelta, {user_info.get('full_name', self.current_user)}! 🎉\n\n✅ Sistema listo para análisis\n📊 Monitor de recursos disponible\n🎬 Funciones de predicción preparadas"
             messagebox.showinfo("🎯 Bienvenido", welcome_msg)
             
             logging.info(f"Usuario {self.current_user} iniciado correctamente")
@@ -2584,13 +2084,6 @@ class CinBehaveGUI:
                 fg=ModernColors.TEXT_PRIMARY, 
                 bg=ModernColors.ACCENT_BLUE).pack(anchor="e")
         
-        # Estado de SLEAP
-        sleap_status = f"🧠 SLEAP {SLEAP_VERSION}" if SLEAP_AVAILABLE else "❌ SLEAP no disponible"
-        tk.Label(right_section, text=sleap_status, 
-                font=self.fonts['small'], 
-                fg=ModernColors.TEXT_PRIMARY, 
-                bg=ModernColors.ACCENT_BLUE).pack(anchor="e")
-        
         # Reloj en tiempo real
         self.time_label = tk.Label(right_section, text="", 
                                   font=self.fonts['small'], 
@@ -2691,12 +2184,12 @@ class CinBehaveGUI:
         
         # Definir tarjetas
         cards_data = [
-            ("🧠 Predecir", "Análisis SLEAP", "Procesar videos con IA\ny obtener predicciones", 
-             ModernColors.ACCENT_PURPLE, self.open_predict_menu),
-            ("🎬 Entrenar", "Machine Learning", "Entrenar modelos\ncon nuevos datos", 
+            ("🎬 Predecir", "Análisis Completo", "Procesar videos\ny obtener predicciones", 
+             ModernColors.ACCENT_BLUE, self.open_predict_menu),
+            ("🧠 Entrenar", "Machine Learning", "Entrenar modelos\ncon nuevos datos", 
              ModernColors.ACCENT_GREEN, self.show_training_menu),
             ("⚙️ Configurar", "Parámetros SLEAP", "Ajustar configuración\ndel sistema", 
-             ModernColors.ACCENT_BLUE, self.show_sleap_config),
+             ModernColors.ACCENT_PURPLE, self.show_sleap_config),
             ("🛠️ Herramientas", "Utilidades", "Herramientas adicionales\ny utilidades", 
              ModernColors.ACCENT_ORANGE, self.show_tools_menu),
             ("📊 Monitor", "Recursos", "Monitor del sistema\nen tiempo real", 
@@ -2780,7 +2273,7 @@ class CinBehaveGUI:
         
         # Información del sistema
         system_info = self.get_system_info()
-        system_text = f"💻 {system_info.get('os', 'Unknown')} | 🐍 Python {sys.version_info.major}.{sys.version_info.minor} | 🎮 {system_info.get('gpu_support', 'Unknown')} | 🧠 SLEAP {SLEAP_VERSION if SLEAP_AVAILABLE else 'No disponible'}"
+        system_text = f"💻 {system_info.get('os', 'Unknown')} | 🐍 Python {sys.version_info.major}.{sys.version_info.minor} | 🎮 {system_info.get('gpu_support', 'Unknown')}"
         
         tk.Label(status_container, text=system_text, 
                 font=self.fonts['tiny'], 
@@ -2827,7 +2320,7 @@ CinBehave es un sistema avanzado de análisis de comportamiento animal usando te
 
 💡 CONSEJO: Use nombres descriptivos como "Dr_Rodriguez" o "Lab_Neurociencias" """
 
-        if self.tutorial.show_tutorial_window("Creación de Usuarios", message, "Paso 1/5 - Configuración inicial"):
+        if self.tutorial.show_tutorial_window("Creación de Usuarios", message, "Paso 1/4 - Configuración inicial"):
             return True
         return False
     
@@ -2844,8 +2337,7 @@ Los proyectos son el corazón de CinBehave. Aquí organizas todos tus análisis.
 
 🆕 CREAR PROYECTO:
 • Haga clic en "🆕 Nuevo" para crear un proyecto
-• Se creará automáticamente una carpeta en "Proyectos/[NombreProyecto]/"
-• Incluye subcarpetas: Videos/, Data_Sleap/, models/
+• Se creará automáticamente una carpeta en "Proyectos/[NombreProyecto]/Videos/"
 • Podrá agregar videos inmediatamente
 
 📂 CARGAR PROYECTO:
@@ -2862,7 +2354,7 @@ Los proyectos son el corazón de CinBehave. Aquí organizas todos tus análisis.
 
 💡 CONSEJO: Use nombres descriptivos como "Ratones_Laberinto_2024" """
 
-        if self.tutorial.show_tutorial_window("Gestión de Proyectos", message, "Paso 2/5 - Organización"):
+        if self.tutorial.show_tutorial_window("Gestión de Proyectos", message, "Paso 2/4 - Organización"):
             state["project_management_shown"] = True
             self.tutorial.save_tutorial_state(state)
     
@@ -2900,49 +2392,8 @@ Los videos son el material principal para el análisis con SLEAP.
 
 💡 CONSEJO: Organice sus videos por sesiones o condiciones experimentales"""
 
-        if self.tutorial.show_tutorial_window("Selección de Videos", message, "Paso 3/5 - Videos de análisis"):
+        if self.tutorial.show_tutorial_window("Selección de Videos", message, "Paso 3/4 - Videos de análisis"):
             state["video_selection_shown"] = True
-            self.tutorial.save_tutorial_state(state)
-    
-    def show_sleap_prediction_tutorial(self):
-        """Tutorial: Explicación de predicciones SLEAP"""
-        state = self.tutorial.load_tutorial_state(self.current_user)
-        if state.get("sleap_explained", False):
-            return
-        
-        message = """🧠 ¡Ahora viene lo emocionante: las Predicciones SLEAP!
-
-¿QUÉ ES SLEAP?
-SLEAP (Social LEAP Estimates Animal Poses) es un framework de IA avanzado para:
-• Tracking de poses de animales en tiempo real
-• Detección automática de comportamientos
-• Análisis de movimientos complejos
-• Estudios de interacción social
-
-🔄 PROCESO AUTOMÁTICO DE PREDICCIÓN:
-1. Verificación de instalación de SLEAP
-2. Detección automática de GPU/CPU
-3. Descarga automática de modelos desde GitHub
-4. Configuración de carpetas del proyecto:
-   • Videos/ → Input de videos
-   • Data_Sleap/ → Output de predicciones (.slp)
-   • models/ → Modelos de IA descargados
-5. Procesamiento con ventana de progreso en tiempo real
-6. Generación de archivos .slp con datos de pose
-
-⚡ MODELOS INCLUIDOS:
-• Centroid model: Detecta centro de masa del animal
-• Centered instance model: Detecta poses detalladas
-
-🎯 RESULTADO:
-• Archivos .slp con coordenadas de poses
-• Tracking frame por frame
-• Datos listos para análisis posterior
-
-💡 IMPORTANTE: El proceso puede tomar tiempo dependiendo del tamaño de videos y hardware disponible."""
-
-        if self.tutorial.show_tutorial_window("Predicciones SLEAP", message, "Paso 4/5 - Inteligencia Artificial"):
-            state["sleap_explained"] = True
             self.tutorial.save_tutorial_state(state)
     
     def show_monitor_tutorial(self):
@@ -2971,16 +2422,15 @@ Esta herramienta le permite supervisar el rendimiento de su computadora durante 
 • Historial de 60 segundos de datos
 • Interfaz moderna y fácil de usar
 
-🎯 ¿POR QUÉ ES ÚTIL PARA SLEAP?
+🎯 ¿POR QUÉ ES ÚTIL?
 • Verificar que su computadora puede manejar análisis pesados
-• Detectar problemas de rendimiento durante predicciones
+• Detectar problemas de rendimiento
 • Optimizar configuraciones de SLEAP
 • Monitorear progreso de procesamientos largos
-• Asegurar que la GPU se esté usando correctamente
 
-💡 CONSEJO: Mantenga el monitor abierto durante análisis SLEAP extensos para verificar el rendimiento"""
+💡 CONSEJO: Mantenga el monitor abierto durante análisis extensos para verificar el rendimiento"""
 
-        if self.tutorial.show_tutorial_window("Monitor de Recursos", message, "Paso 5/5 - Monitoreo del sistema"):
+        if self.tutorial.show_tutorial_window("Monitor de Recursos", message, "Paso 4/4 - Monitoreo del sistema"):
             state["monitor_explained"] = True
             state["tutorial_completed"] = True
             self.tutorial.save_tutorial_state(state)
@@ -3000,6 +2450,30 @@ Esta herramienta le permite supervisar el rendimiento de su computadora durante 
                 self.update_status("🎓 Tutorial reiniciado")
             else:
                 messagebox.showwarning("⚠️ Sin Usuario", "Debe tener un usuario activo para reiniciar el tutorial")
+    
+    def setup_user_environment(self):
+        """Configurar entorno completo del usuario"""
+        try:
+            self.setup_directories()
+            self.load_user_projects()
+            self.update_last_login()
+            
+            self.user_window.destroy()
+            self.root.deiconify()
+            self.create_main_interface()
+            
+            # NUEVO: Mostrar tutorial de gestión de proyectos
+            self.show_project_management_tutorial()
+            
+            user_info = self.get_user_info()
+            welcome_msg = f"¡Bienvenido de vuelta, {user_info.get('full_name', self.current_user)}! 🎉\n\n✅ Sistema listo para análisis\n📊 Monitor de recursos disponible\n🎬 Funciones de predicción preparadas"
+            messagebox.showinfo("🎯 Bienvenido", welcome_msg)
+            
+            logging.info(f"Usuario {self.current_user} iniciado correctamente")
+            
+        except Exception as e:
+            logging.error(f"Error configurando entorno: {e}")
+            messagebox.showerror("❌ Error", f"Error configurando entorno: {e}")
     
     # NUEVAS FUNCIONES PARA GESTIÓN DE VIDEOS
     def select_videos_for_project(self):
@@ -3081,8 +2555,6 @@ Esta herramienta le permite supervisar el rendimiento de su computadora durante 
             # Paso 2: Crear estructura de carpetas en Proyectos/
             project_folder = self.projects_root_dir / project_name
             videos_folder = project_folder / "Videos"
-            data_sleap_folder = project_folder / "Data_Sleap"  # NUEVA: Para archivos .slp
-            models_folder = project_folder / "models"  # NUEVA: Para modelos SLEAP
             
             # Verificar que no exista la carpeta
             if project_folder.exists():
@@ -3093,17 +2565,14 @@ Esta herramienta le permite supervisar el rendimiento de su computadora durante 
             # Crear estructura de carpetas
             project_folder.mkdir(parents=True, exist_ok=True)
             videos_folder.mkdir(parents=True, exist_ok=True)
-            data_sleap_folder.mkdir(parents=True, exist_ok=True)
-            models_folder.mkdir(parents=True, exist_ok=True)
             
-            self.update_status(f"📁 Estructura del proyecto creada: {project_folder}")
+            self.update_status(f"📁 Carpeta del proyecto creada: {project_folder}")
             logging.info(f"Estructura de carpetas creada para proyecto: {project_name}")
             
             # Paso 3: Preguntar si desea agregar videos ahora
             add_videos = messagebox.askyesno("🎬 Agregar Videos", 
                                            f"Proyecto '{project_name}' creado exitosamente.\n\n"
-                                           f"📁 Ubicación: {project_folder}\n"
-                                           f"📂 Carpetas: Videos/, Data_Sleap/, models/\n\n"
+                                           f"📁 Ubicación: {project_folder}\n\n"
                                            "¿Deseas seleccionar videos para agregar al proyecto ahora?")
             
             videos_list = []
@@ -3157,12 +2626,9 @@ Esta herramienta le permite supervisar el rendimiento de su computadora durante 
                 "videos": [Path(v).name for v in videos_list],  # Solo guardar nombres
                 "project_folder": str(project_folder),
                 "videos_folder": str(videos_folder),
-                "data_sleap_folder": str(data_sleap_folder),  # NUEVA
-                "models_folder": str(models_folder),  # NUEVA
                 "sleap_params": self.sleap_params.copy(),
                 "results": {},
-                "annotations": [],
-                "sleap_predictions": []  # NUEVA: Para guardar info de predicciones
+                "annotations": []
             }
             
             # Paso 7: Actualizar interfaz
@@ -3180,9 +2646,8 @@ Esta herramienta le permite supervisar el rendimiento de su computadora durante 
             # Mensaje final
             final_msg = f"✅ Proyecto '{project_name}' creado exitosamente!\n\n"
             final_msg += f"📁 Ubicación: {project_folder}\n"
-            final_msg += f"🎬 Videos agregados: {len(videos_list)}\n"
-            final_msg += f"📂 Carpetas: Videos/, Data_Sleap/, models/\n\n"
-            final_msg += "El proyecto está listo para usar con SLEAP."
+            final_msg += f"🎬 Videos agregados: {len(videos_list)}\n\n"
+            final_msg += "El proyecto está listo para usar."
             
             self.update_status(f"🆕 Proyecto '{project_name}' creado con {len(videos_list)} videos")
             messagebox.showinfo("🎉 Proyecto Creado", final_msg)
@@ -3229,8 +2694,7 @@ Esta herramienta le permite supervisar el rendimiento de su computadora durante 
         project_info = f"📁 Proyecto: {project_name}\n"
         project_info += f"🎬 Videos disponibles: {len(self.loaded_videos)}\n"
         project_info += f"📅 Creado: {project_data.get('created', 'Desconocido')}\n"
-        project_info += f"📂 Ubicación: {project_data.get('project_folder', 'No especificada')}\n"
-        project_info += f"🧠 SLEAP: Listo para predicciones"
+        project_info += f"📂 Ubicación: {project_data.get('project_folder', 'No especificada')}"
         
         self.update_status(f"📂 Proyecto '{project_name}' cargado")
         messagebox.showinfo("✅ Proyecto Cargado", project_info)
@@ -3270,8 +2734,6 @@ Esta herramienta le permite supervisar el rendimiento de su computadora durante 
         confirm_msg += "ADVERTENCIA: Esto eliminará:\n"
         confirm_msg += "• El registro del proyecto en CinBehave\n"
         confirm_msg += "• La carpeta del proyecto y todos sus videos\n"
-        confirm_msg += "• Todos los resultados SLEAP (.slp)\n"
-        confirm_msg += "• Los modelos descargados\n"
         confirm_msg += "• Todos los datos asociados\n\n"
         confirm_msg += "Esta acción NO se puede deshacer."
         
@@ -3306,7 +2768,7 @@ Esta herramienta le permite supervisar el rendimiento de su computadora durante 
                 messagebox.showerror("❌ Error", f"Error eliminando proyecto:\n{e}")
     
     def open_predict_menu(self):
-        """Abrir menú de predicción completo con SLEAP"""
+        """Abrir menú de predicción completo"""
         if not self.current_project:
             if messagebox.askyesno("📋 Sin Proyecto", 
                                   "No hay proyecto activo. ¿Crear uno nuevo?"):
@@ -3315,102 +2777,21 @@ Esta herramienta le permite supervisar el rendimiento de su computadora durante 
             else:
                 return
         
-        # Verificar que hay videos
-        if not self.loaded_videos:
-            if messagebox.askyesno("🎬 Sin Videos", 
-                                  f"El proyecto '{self.current_project}' no tiene videos.\n\n¿Agregar videos ahora?"):
-                videos_list = self.select_videos_for_project()
-                if videos_list:
-                    success = self.copy_videos_to_project(self.current_project, videos_list)
-                    if success:
-                        self.loaded_videos = videos_list
-                        # Actualizar proyecto
-                        self.projects_data[self.current_project]["videos"] = [Path(v).name for v in videos_list]
-                        self.save_user_projects()
-                    else:
-                        return
-                else:
-                    return
-            else:
-                return
+        # Mostrar información del proyecto actual
+        project_info = f"Proyecto actual: {self.current_project}\n"
+        project_info += f"Videos disponibles: {len(self.loaded_videos)}\n"
+        if self.loaded_videos:
+            project_info += f"Ubicación: {self.get_project_videos_folder(self.current_project)}"
         
-        # Verificar SLEAP
-        if not SLEAP_AVAILABLE:
-            error_msg = f"❌ SLEAP no está instalado.\n\n"
-            error_msg += f"Para usar las predicciones necesitas instalar SLEAP:\n"
-            error_msg += f"pip install sleap\n\n"
-            error_msg += f"Reinicia CinBehave después de la instalación."
-            messagebox.showerror("❌ SLEAP No Disponible", error_msg)
-            return
-        
-        # Mostrar tutorial de SLEAP si es la primera vez
-        self.show_sleap_prediction_tutorial()
-        
-        # Confirmación final
-        confirm_msg = f"🧠 Iniciar Predicciones SLEAP\n\n"
-        confirm_msg += f"📁 Proyecto: {self.current_project}\n"
-        confirm_msg += f"🎬 Videos: {len(self.loaded_videos)}\n"
-        confirm_msg += f"🔬 SLEAP: {SLEAP_VERSION}\n\n"
-        confirm_msg += f"El procesamiento puede tomar tiempo dependiendo del tamaño de los videos.\n\n"
-        confirm_msg += f"¿Continuar con las predicciones?"
-        
-        if messagebox.askyesno("🧠 Confirmar Predicciones", confirm_msg):
-            try:
-                self.update_status("🧠 Iniciando predicciones SLEAP...")
-                
-                # Ejecutar predicción
-                success, message = self.sleap_predictor.run_prediction(self.current_project)
-                
-                if success:
-                    # Actualizar proyecto con resultados
-                    timestamp = datetime.now().isoformat()
-                    prediction_info = {
-                        "timestamp": timestamp,
-                        "videos_processed": len(self.loaded_videos),
-                        "sleap_version": SLEAP_VERSION,
-                        "status": "completed"
-                    }
-                    
-                    self.projects_data[self.current_project]["sleap_predictions"].append(prediction_info)
-                    self.projects_data[self.current_project]["last_modified"] = timestamp
-                    self.save_user_projects()
-                    
-                    success_msg = f"🎉 ¡Predicciones SLEAP Completadas!\n\n"
-                    success_msg += f"✅ Videos procesados: {len(self.loaded_videos)}\n"
-                    success_msg += f"📂 Resultados en: {self.projects_root_dir / self.current_project / 'Data_Sleap'}\n"
-                    success_msg += f"🕐 Completado: {datetime.now().strftime('%H:%M:%S')}\n\n"
-                    success_msg += f"Los archivos .slp están listos para análisis."
-                    
-                    self.update_status("🎉 Predicciones SLEAP completadas exitosamente")
-                    messagebox.showinfo("🎉 ¡Éxito!", success_msg)
-                else:
-                    self.update_status("❌ Error en predicciones SLEAP")
-                    messagebox.showerror("❌ Error", f"Error en las predicciones:\n{message}")
-                
-            except Exception as e:
-                logging.error(f"Error en predicciones: {e}")
-                self.update_status("❌ Error inesperado en predicciones")
-                messagebox.showerror("❌ Error", f"Error inesperado:\n{e}")
+        messagebox.showinfo("🎬 Predicción", f"Menú de predicción completo - En desarrollo\n\n{project_info}\n\nIncluirá:\n• Carga de videos\n• Procesamiento SLEAP\n• Análisis de resultados\n• Anotaciones manuales")
     
     def show_training_menu(self):
         """Mostrar menú de entrenamiento"""
-        training_msg = f"🧠 Entrenamiento de Modelos SLEAP\n\n"
-        training_msg += f"Esta funcionalidad permitirá:\n"
-        training_msg += f"• Entrenar modelos personalizados\n"
-        training_msg += f"• Usar datos de anotación propios\n"
-        training_msg += f"• Optimizar para especies específicas\n\n"
-        training_msg += f"Estado: En desarrollo"
-        messagebox.showinfo("🧠 Entrenamiento", training_msg)
+        messagebox.showinfo("🧠 Entrenamiento", "Funcionalidad de entrenamiento de modelos - Próximamente")
     
     def show_sleap_config(self):
         """Mostrar configuración SLEAP completa"""
-        config_msg = f"⚙️ Configuración SLEAP\n\n"
-        config_msg += f"Estado actual:\n"
-        config_msg += f"• SLEAP: {'✅ ' + SLEAP_VERSION if SLEAP_AVAILABLE else '❌ No instalado'}\n"
-        config_msg += f"• GPU: {self.check_gpu_support()}\n"
-        config_msg += f"• Modelos: Descarga automática desde GitHub\n\n"
-        config_msg += f"Configuración avanzada: En desarrollo"
-        messagebox.showinfo("⚙️ Configuración", config_msg)
+        messagebox.showinfo("⚙️ Configuración", "Configuración avanzada de SLEAP - En desarrollo\n\nIncluirá:\n• Parámetros básicos\n• Configuración avanzada\n• Detección de hardware\n• Perfiles personalizados")
     
     def show_tools_menu(self):
         """Mostrar menú de herramientas"""
@@ -3432,7 +2813,7 @@ Esta herramienta le permite supervisar el rendimiento de su computadora durante 
         """Mostrar información sobre la aplicación"""
         about_text = f"""
 🔬 CinBehave - SLEAP Analysis GUI
-Versión 1.0 - SLEAP Integration Edition
+Versión 1.0 - Beautiful Edition
 
 Sistema avanzado de análisis de comportamiento animal
 usando tecnología de Machine Learning con SLEAP.
@@ -3440,7 +2821,6 @@ usando tecnología de Machine Learning con SLEAP.
 🖥️ Plataforma: Windows
 🐍 Python: {sys.version_info.major}.{sys.version_info.minor}
 👤 Usuario: {self.current_user}
-🧠 SLEAP: {'✅ ' + SLEAP_VERSION if SLEAP_AVAILABLE else '❌ No instalado'}
 📊 Monitor: {'Disponible' if MATPLOTLIB_AVAILABLE else 'Limitado'}
 📁 Proyectos: {self.projects_root_dir}
 
