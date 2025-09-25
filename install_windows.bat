@@ -1,26 +1,29 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
 REM ============================================================================
-REM CinBehave - INSTALADOR MEJORADO CON PYTHON EN PATH
-REM Version: 1.8 Enhanced (fix3 ultra-robust)
+REM CinBehave - INSTALADOR WINDOWS (SIN SLEAP)
+REM Version: 1.9 (user-mode Python + venv, no PATH global, sin SLEAP)
 REM ============================================================================
 
 echo.
 echo ============================================================================
 echo                    CinBehave SLEAP Analysis Suite
-echo                 INSTALADOR MEJORADO v1.8 (fix3)
+echo                      INSTALADOR v1.9 (sin SLEAP)
 echo ============================================================================
 echo [DEBUG] Ejecutando: %~f0
 echo.
 
-echo [INFO] Iniciando instalacion mejorada...
+echo [INFO] Iniciando instalacion...
 timeout /t 1 >nul
 
-REM ==== PASO 1: ADMIN ====
-echo [PASO 1] Verificando administrador...
+REM ==== PASO 1: ADMIN (opcional, solo para MSI por usuario no es estrictamente necesario) ====
+echo [PASO 1] Verificando administrador (opcional)...
 net session >nul 2>&1
-if errorlevel 1 goto ERR_ADMIN
-echo [OK] Permisos de administrador verificados
+if errorlevel 1 (
+  echo [NOTICE] No se ejecuta como admin. Continuando con instalacion por USUARIO...
+) else (
+  echo [OK] Permisos de administrador detectados (no requeridos).
+)
 
 REM ==== PASO 2: INTERNET ====
 echo [PASO 2] Verificando conexion a internet...
@@ -37,6 +40,14 @@ if exist "%INSTALL_DIR%" (
     echo [WARNING] Instalacion previa detectada
     set /p "OVERWRITE=Sobrescribir instalacion anterior? s/n: "
     if /i not "!OVERWRITE!"=="s" goto ABORT_INSTALL
+    echo [INFO] Conservando carpetas de usuario y proyectos (backup)...
+    if not exist "%USERPROFILE%\CinBehave_backup" mkdir "%USERPROFILE%\CinBehave_backup"
+    for %%D in ("users" "Proyectos") do (
+        if exist "%INSTALL_DIR%\%%~D" (
+            echo [INFO] Copiando %%~D a backup...
+            xcopy /e /i /y "%INSTALL_DIR%\%%~D" "%USERPROFILE%\CinBehave_backup\%%~D" >nul
+        )
+    )
     echo [INFO] Eliminando instalacion anterior...
     rmdir /s /q "%INSTALL_DIR%"
 )
@@ -53,41 +64,36 @@ cd /d "%INSTALL_DIR%"
 echo [OK] Estructura de carpetas creada
 
 REM ==== PASO 4: PYTHON DOWNLOAD + MSI CHECK ====
-echo [PASO 4] Descargando e instalando Python 3.11.6...
+echo [PASO 4] Descargando e instalando Python 3.11.6 (modo USUARIO)...
 echo [INFO] Descargando Python desde python.org (puede tomar varios minutos)...
 powershell -NoProfile -Command ^
   "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; " ^
-  "Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.11.6/python-3.11.6-amd64.exe' -OutFile 'python_installer.exe' -UseBasicParsing" 
+  "Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.11.6/python-3.11.6-amd64.exe' -OutFile 'python_installer.exe' -UseBasicParsing"
 if not exist "python_installer.exe" goto ERR_PY_DL
 
 echo [INFO] Verificando servicio Windows Installer...
-:CHECK_MSISERVER
 for /f "usebackq delims=" %%S in (`powershell -NoProfile -Command "(Get-Service -Name msiserver).Status"`) do set "MSI_STATUS=%%S"
-if /i "%MSI_STATUS%"=="Running" goto MSI_OK
-
-echo [ERROR] El servicio Windows Installer (msiserver) no esta activo. Estado: %MSI_STATUS%
-echo [INFO] Para iniciarlo manualmente, ejecute: net start msiserver
-set /p "RETRY=Reintentar verificacion tras iniciarlo? s/n: "
-if /i "%RETRY%"=="s" goto CHECK_MSISERVER
-goto ERR_MSI
-
-:MSI_OK
+if /i not "%MSI_STATUS%"=="Running" (
+  echo [NOTICE] msiserver no esta en Running. Intentando iniciar...
+  net start msiserver >nul 2>&1
+  for /f "usebackq delims=" %%S in (`powershell -NoProfile -Command "(Get-Service -Name msiserver).Status"`) do set "MSI_STATUS=%%S"
+  if /i not "%MSI_STATUS%"=="Running" goto ERR_MSI
+)
 echo [OK] Servicio Windows Installer activo
 
-echo [INFO] Instalando Python 3.11.6 (esto puede tardar)...
-echo [INFO] Python se instalara en: %INSTALL_DIR%\Python311
-echo [INFO] Python se agregara al PATH del sistema
+echo [INFO] Instalando Python 3.11.6 para el USUARIO actual...
+echo [INFO] Python se instalara en: %INSTALL_DIR%\Python311  (no se modificara el PATH global)
 start /wait python_installer.exe /quiet ^
   TargetDir="%INSTALL_DIR%\Python311" ^
-  InstallAllUsers=1 ^
-  PrependPath=1 ^
+  InstallAllUsers=0 ^
+  PrependPath=0 ^
   AssociateFiles=1 ^
   Shortcuts=1 ^
   Include_doc=0 ^
   Include_tcltk=1 ^
   Include_test=0 ^
   Include_launcher=1 ^
-  InstallLauncherAllUsers=1
+  InstallLauncherAllUsers=0
 
 if errorlevel 1 goto ERR_PY_SETUP
 if not exist "%INSTALL_DIR%\Python311\python.exe" goto ERR_PY_SETUP
@@ -95,50 +101,62 @@ if not exist "%INSTALL_DIR%\Python311\python.exe" goto ERR_PY_SETUP
 del /q "python_installer.exe" >nul 2>&1
 echo [OK] Python 3.11.6 instalado correctamente
 
-REM ==== PASO 5: PATH ====
-echo [PASO 5] Actualizando variables de entorno...
-echo [INFO] Agregando Python al PATH del usuario (respaldo)...
-setx PATH "%PATH%;%INSTALL_DIR%\Python311;%INSTALL_DIR%\Python311\Scripts" >nul 2>&1
-echo [OK] PATH actualizado
-
-REM ==== PASO 6: VENV ====
-echo [PASO 6] Creando entorno virtual...
+REM ==== PASO 5: VENV ====
+echo [PASO 5] Creando entorno virtual...
 "%INSTALL_DIR%\Python311\python.exe" -m venv venv --upgrade-deps
 if not exist "venv\Scripts\python.exe" goto ERR_VENV
-echo [OK] Entorno virtual creado exitosamente
+echo [OK] Entorno virtual creado
 
-REM ==== PASO 7: APP ====
-echo [PASO 7] Descargando aplicacion principal...
+REM ==== PASO 6: APP ====
+echo [PASO 6] Obteniendo aplicacion principal...
+REM Opcion A: Descargar desde GitHub (tag/commit fijo recomendado)
 powershell -NoProfile -Command ^
   "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; " ^
   "Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/StevenM711/CinBehave/main/cinbehave_gui.py' -OutFile 'cinbehave_gui.py' -UseBasicParsing"
 if not exist "cinbehave_gui.py" goto ERR_APP_DL
-echo [OK] Aplicacion principal descargada
+echo [OK] Aplicacion principal disponible
 
-REM ==== PASO 8: DEPENDENCIAS ====
-echo [PASO 8] Instalando dependencias...
+REM ==== PASO 7: DEPENDENCIAS (SIN SLEAP) ====
+echo [PASO 7] Instalando dependencias (excluyendo SLEAP)...
 call "venv\Scripts\activate.bat"
 python -m pip install --upgrade pip
-copy "%~dp0requirements.txt" "requirements.txt" >nul
-python -m pip install -r requirements.txt
+
+REM Si hay requirements.txt junto al instalador, copiarlo. Si no, crear basico.
+if exist "%~dp0requirements.txt" (
+  copy "%~dp0requirements.txt" "requirements.txt" >nul
+) else (
+  echo requests>requirements.txt
+  echo numpy>>requirements.txt
+  echo pandas>>requirements.txt
+  echo matplotlib>>requirements.txt
+  echo tqdm>>requirements.txt
+)
+
+REM Filtrar sleap si aparece en requirements.txt
+echo [INFO] Generando requirements_sin_sleap.txt...
+> requirements_sin_sleap.txt (
+  for /f "usebackq delims=" %%L in ("requirements.txt") do (
+    set "LINE=%%L"
+    setlocal EnableDelayedExpansion
+    set "LOW=!LINE:~0,5!"
+    REM Excluir lineas que contengan 'sleap' (cualquier forma)
+    echo !LINE! | find /I "sleap" >nul
+    if errorlevel 1 (
+      echo !LINE!
+    )
+    endlocal
+  )
+)
+
+python -m pip install -r requirements_sin_sleap.txt
 if errorlevel 1 goto ERR_DEPS
 echo [OK] Dependencias instaladas
 
-REM ==== PASO 9: SLEAP ====
-echo [PASO 9] Verificando instalacion de SLEAP...
-python -c "import sleap; print('[SUCCESS] SLEAP version:', sleap.__version__)" 1>nul 2>nul
-if errorlevel 1 (
-  echo [WARNING] SLEAP puede no haberse instalado correctamente
-  echo [INFO] Se intentara instalar en el primer uso de la aplicacion
-) else (
-  echo [OK] SLEAP instalado correctamente
-)
-
-REM ==== PASO 10: LANZADORES ====
-echo [PASO 10] Creando archivos de lanzamiento...
+REM ==== PASO 8: LANZADORES ====
+echo [PASO 8] Creando archivos de lanzamiento...
 > "CinBehave.bat"  (
   echo @echo off
-  echo REM Lanzador de CinBehave - Version 1.8
+  echo REM Lanzador de CinBehave - v1.9 (sin SLEAP)
   echo title CinBehave - SLEAP Analysis Suite
   echo cd /d "%%~dp0"
   echo echo Iniciando CinBehave...
@@ -148,7 +166,7 @@ echo [PASO 10] Creando archivos de lanzamiento...
   echo ^( ^
   echo   echo. ^
   echo   echo [ERROR] Error ejecutando CinBehave ^
-  echo   echo Presiona cualquier tecla para continuar... ^
+  echo   echo Revisa logs\ y dependencias ^
   echo   pause ^>nul ^
   echo ^)
 )
@@ -165,31 +183,15 @@ echo [PASO 10] Creando archivos de lanzamiento...
   echo echo [TEST] Verificando Python...
   echo python --version
   echo echo.
-  echo echo [TEST] Verificando dependencias...
+  echo echo [TEST] Verificando dependencias basicas...
   echo python -c "import requests, numpy, pandas, matplotlib; print('[OK] Dependencias basicas funcionan')"
   echo echo.
-  echo echo [TEST] Verificando SLEAP...
-  echo python -c "import sleap; print('[OK] SLEAP version:', sleap.__version__)"
-  echo echo.
-  echo echo [TEST] Verificando GPU...
-  echo python -c "import tensorflow as tf; print('[INFO] GPUs detectadas:', len(tf.config.list_physical_devices('GPU')))"
+  echo echo [TEST] Verificando TensorFlow (opcional)...
+  echo python -c "import importlib,sys; m=importlib.util.find_spec('tensorflow'); print('[INFO] TF instalado?' , bool(m))"
   echo echo.
   echo echo ============================================
   echo echo Presiona cualquier tecla para continuar...
   echo pause ^>nul
-)
-
-> "Install_SLEAP.bat" (
-  echo @echo off
-  echo title Instalador de SLEAP para CinBehave
-  echo cd /d "%%~dp0"
-  echo echo Instalando dependencias...
-  echo call venv\Scripts\activate.bat
-  echo python -m pip install --upgrade pip
-  echo copy "%%~dp0requirements.txt" requirements.txt ^>nul
-  echo python -m pip install -r requirements.txt
-  echo python -c "import sleap; print('SLEAP instalado:', sleap.__version__)"
-  echo pause
 )
 
 > "Uninstall.bat" (
@@ -213,8 +215,8 @@ echo [PASO 10] Creando archivos de lanzamiento...
 
 echo [OK] Archivos de lanzamiento creados
 
-REM ==== PASO 11: INFO DEL SISTEMA ====
-echo [PASO 11] Creando archivo de informacion del sistema...
+REM ==== PASO 9: INFO DEL SISTEMA ====
+echo [PASO 9] Creando archivo de informacion del sistema...
 > "system_info.txt" (
   echo ============================================
   echo    CinBehave System Information
@@ -237,8 +239,8 @@ systeminfo | findstr /C:"OS Name" /C:"OS Version" >> "system_info.txt"
 systeminfo | findstr /C:"Total Physical Memory" >> "system_info.txt"
 echo [OK] Informacion del sistema guardada
 
-REM ==== PASO 12: VALIDACION ====
-echo [PASO 12] Validacion final del sistema...
+REM ==== PASO 10: VALIDACION FINAL ====
+echo [PASO 10] Validacion final del sistema...
 venv\Scripts\python.exe --version >nul 2>&1
 if errorlevel 1 goto ERR_PY_RUN
 
@@ -247,31 +249,28 @@ if errorlevel 1 goto ERR_DEPS
 
 venv\Scripts\python.exe -c "import sys; sys.path.append('.'); import cinbehave_gui" >nul 2>&1
 if errorlevel 1 (
-  echo [WARNING] La aplicacion puede tener problemas de importacion
-  echo [INFO] Esto es normal si SLEAP no esta completamente instalado
+  echo [WARNING] La aplicacion pudo no importar correctamente (revisa dependencias).
+) else (
+  echo [OK] Validacion completada
 )
 
-echo [OK] Validacion del sistema completada
-
 echo.
 echo ============================================================================
-echo                        INSTALACION COMPLETADA EXITOSAMENTE
+echo                        INSTALACION COMPLETADA
 echo ============================================================================
 echo.
-echo [SUCCESS] CinBehave ha sido instalado en: %INSTALL_DIR%
+echo [SUCCESS] CinBehave instalado en: %INSTALL_DIR%
 echo.
 echo ARCHIVOS CREADOS:
 echo    - CinBehave.bat (lanzador)
 echo    - Test.bat (test del sistema)
-echo    - Install_SLEAP.bat (instalar o reparar SLEAP)
 echo    - Uninstall.bat (desinstalador)
 echo    - system_info.txt (info del sistema)
 echo.
 echo PYTHON:
 echo    - Version: 3.11.6
 echo    - Ubicacion: %INSTALL_DIR%\Python311
-echo    - PATH: agregado
-echo    - Entorno virtual: configurado
+echo    - Entorno virtual: configurado (no se toco PATH global)
 echo.
 echo USO:
 echo    1) Ir a: %INSTALL_DIR%
@@ -288,12 +287,6 @@ if /i "%RUN_NOW%"=="s" (
 goto END_OK
 
 REM ==== ERRORES ====
-:ERR_ADMIN
-echo [ERROR] Ejecute como administrador
-echo [INFO] Click derecho > Ejecutar como administrador
-pause
-exit /b 1
-
 :ERR_NET
 echo [ERROR] Sin conexion a internet
 echo [INFO] Verifique su conexion y reintente
@@ -307,13 +300,14 @@ pause
 exit /b 1
 
 :ERR_MSI
-echo [INFO] Instalacion cancelada hasta que el servicio este activo.
+echo [ERROR] El servicio Windows Installer no esta activo
+echo [INFO] Inicielo con: net start msiserver y reintente
 pause
 exit /b 1
 
 :ERR_PY_SETUP
 echo [ERROR] La instalacion de Python fallo o no se encontro python.exe
-echo [INFO] Revise permisos de administrador o intente nuevamente
+echo [INFO] Revise permisos o intente nuevamente
 pause
 exit /b 1
 
@@ -324,14 +318,14 @@ pause
 exit /b 1
 
 :ERR_APP_DL
-echo [ERROR] Error descargando la aplicacion (cinbehave_gui.py)
+echo [ERROR] Error obteniendo la aplicacion (cinbehave_gui.py)
 echo [INFO] Verifique su conexion a internet
 pause
 exit /b 1
 
 :ERR_DEPS
 echo [ERROR] Fallo instalando dependencias basicas
-echo [INFO] Revise requirements.txt y su conexion
+echo [INFO] Revise requirements.txt (sleap es excluido automaticamente)
 pause
 exit /b 1
 
