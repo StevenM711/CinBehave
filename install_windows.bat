@@ -2,10 +2,11 @@
 setlocal EnableExtensions DisableDelayedExpansion
 
 REM ============================================================================
-REM CinBehave - Instalador Windows (robusto, sin ANSI)
-REM - Timestamp via PowerShell (evita coma decimal de %time%)
-REM - Filtrado de requirements con PowerShell (sin goto dentro de for)
-REM - Por defecto SIN SLEAP (activar con WITH_SLEAP=1)
+REM CinBehave - Instalador Windows (v3)
+REM - Sin ANSI
+REM - Timestamp seguro
+REM - Filtrado requirements via PowerShell
+REM - Detección de Python 3.11 SIN heredoc (compatible con cmd.exe)
 REM ============================================================================
 
 set "APP_NAME=CinBehave"
@@ -27,7 +28,7 @@ echo Directorio de instalacion: %INSTALL_DIR%
 echo SLEAP: %WITH_SLEAP%  (0 = sin SLEAP, 1 = con SLEAP)
 echo.
 
-REM --- Elevacion a admin si hace falta (si YA lanzaste como admin, sigue) ---
+REM --- Elevacion a admin si hace falta ---
 net session >nul 2>&1
 if errorlevel 1 (
   echo [INFO] Elevando privilegios de administrador...
@@ -39,7 +40,7 @@ REM --- Preparar carpetas ---
 if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%" >nul 2>&1
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%" >nul 2>&1
 
-REM --- Timestamp seguro ---
+REM --- Timestamp seguro (para nombre del log) ---
 for /f "usebackq delims=" %%T in (`powershell -NoProfile -Command "(Get-Date).ToString('yyyyMMdd_HHmmss')"`) do set "TS=%%T"
 set "LOG=%LOG_DIR%\install_%TS%.log"
 
@@ -54,21 +55,19 @@ if errorlevel 1 (
 )
 call :log "[OK] Internet verificado"
 
-REM --- Python 3.11 ---
+REM --- Python 3.11 (DETECCION CORREGIDA) ---
 call :log "[STEP] Verificando Python 3.11..."
 set "PY_CMD="
 
-py -3.11 -c "import sys;print(sys.version)" >nul 2>&1 && set "PY_CMD=py -3.11"
+REM 1) Probar el launcher directamente
+py -3.11 -V >nul 2>&1 && set "PY_CMD=py -3.11"
+
+REM 2) Si no, probar 'python' y chequear major/minor
 if not defined PY_CMD (
-  for /f "delims=" %%P in ('where python 2^>nul') do (
-    python - <<#PYCHK 2>nul | find "OK_311" >nul 2>&1 && set "PY_CMD=python"
-import platform
-v=platform.python_version_tuple()
-print("OK_311" if int(v[0])==3 and int(v[1])==11 else "NO")
-#PYCHK
-  )
+  python -c "import sys; print(1 if (sys.version_info[0]==3 and sys.version_info[1]==11) else 0)" 2>nul | find "1" >nul 2>&1 && set "PY_CMD=python"
 )
 
+REM 3) Instalar si sigue sin estar
 if not defined PY_CMD (
   call :log "[INFO] Python 3.11 no encontrado. Instalando..."
   set "PY_EXE=%INSTALL_DIR%\python-3.11.9-amd64.exe"
@@ -86,15 +85,9 @@ if not defined PY_CMD (
   del /q "%PY_EXE%" >nul 2>&1
 
   REM Re-detectar
-  py -3.11 -c "import sys;print(sys.version)" >nul 2>&1 && set "PY_CMD=py -3.11"
+  py -3.11 -V >nul 2>&1 && set "PY_CMD=py -3.11"
   if not defined PY_CMD (
-    for /f "delims=" %%P in ('where python 2^>nul') do (
-      python - <<#PYCHK2 2>nul | find "OK_311" >nul 2>&1 && set "PY_CMD=python"
-import platform
-v=platform.python_version_tuple()
-print("OK_311" if int(v[0])==3 and int(v[1])==11 else "NO")
-#PYCHK2
-    )
+    python -c "import sys; print(1 if (sys.version_info[0]==3 and sys.version_info[1]==11) else 0)" 2>nul | find "1" >nul 2>&1 && set "PY_CMD=python"
   )
 )
 
