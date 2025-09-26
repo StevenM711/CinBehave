@@ -1,236 +1,207 @@
 @echo off
-REM CinBehave - SLEAP Analysis GUI Installer for Windows
-REM Version: 1.0 - Fixed
-REM Author: SLEAP Analysis System
+setlocal EnableExtensions EnableDelayedExpansion
 
-setlocal enabledelayedexpansion
+REM ============================================================================
+REM CinBehave - Instalador Windows limpio (SIN ANSI, robusto)
+REM Por defecto NO instala SLEAP (puedes habilitarlo con WITH_SLEAP=1)
+REM Requiere: Windows 10/11 x64
+REM ============================================================================
 
-REM Configurar colores
-set "RED=[91m"
-set "GREEN=[92m"
-set "YELLOW=[93m"
-set "BLUE=[94m"
-set "NC=[0m"
+REM --------- CONFIGURACION ----------
+set "APP_NAME=CinBehave"
+set "REPO_RAW=https://raw.githubusercontent.com/StevenM711/CinBehave/main"
+REM Python 3.11.9 x64 oficial:
+set "PY_URL=https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe"
+REM Directorio de instalación (usuario actual):
+set "INSTALL_DIR=%USERPROFILE%\%APP_NAME%"
+set "VENV_DIR=%INSTALL_DIR%\venv"
+set "LOG_DIR=%INSTALL_DIR%\logs"
 
-REM Mostrar banner
-cls
+REM Control SLEAP: 0=sin SLEAP (por defecto), 1=con SLEAP
+if not defined WITH_SLEAP set "WITH_SLEAP=0"
+
+REM --------- TITULO / HEADER ----------
+title %APP_NAME% - Instalador
 echo.
-echo    ╔══════════════════════════════════════════════════════════════╗
-echo    ║                 CinBehave - SLEAP Analysis GUI               ║
-echo    ║                       Instalador Windows                     ║
-echo    ║                                                              ║
-echo    ║    Sistema de Análisis de Videos con SLEAP                   ║
-echo    ║    Versión: 1.0                                              ║
-echo    ╚══════════════════════════════════════════════════════════════╝
+echo ===============================================================
+echo                 %APP_NAME% - Instalador Windows
+echo ===============================================================
+echo Directorio de instalacion: %INSTALL_DIR%
+echo SLEAP: %WITH_SLEAP%  (0 = sin SLEAP, 1 = con SLEAP)
 echo.
 
-REM Verificar si se ejecuta como administrador
+REM --------- ELEVACION A ADMIN ----------
+REM (necesario para instalar Python para el usuario y tocar PATH correctamente)
 net session >nul 2>&1
-if %errorLevel% neq 0 (
-    echo %RED%[ERROR]%NC% Este instalador requiere permisos de administrador.
-    echo %YELLOW%[INFO]%NC% Ejecuta como administrador haciendo clic derecho en el archivo.
-    pause
-    exit /b 1
+if errorlevel 1 (
+  echo [INFO] Elevando a administrador...
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -Verb RunAs -FilePath 'cmd.exe' -ArgumentList '/c \"\"%~f0\" %*\"'"
+  exit /b
 )
 
-echo %GREEN%[INFO]%NC% Iniciando instalación de CinBehave...
-echo.
+REM --------- PREPARAR RUTAS / LOGS ----------
+if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%" >nul 2>&1
+if not exist "%LOG_DIR%" mkdir "%LOG_DIR%" >nul 2>&1
 
-REM Verificar sistema Windows
-echo %BLUE%[STEP 1/10]%NC% Verificando sistema Windows...
-ver | find "Windows" >nul
-if %errorLevel% neq 0 (
-    echo %RED%[ERROR]%NC% Este instalador está diseñado para Windows.
-    pause
-    exit /b 1
+for /f "tokens=1-4 delims=/ " %%a in ("%date%") do set "TODAY=%%d%%b%%c"
+for /f "tokens=1-3 delims=:." %%h in ("%time%") do set "NOW=%%h%%i%%j"
+set "NOW=%NOW: =0%"
+set "TS=%date:~6,4%%date:~3,2%%date:~0,2%_%NOW%"
+set "LOG=%LOG_DIR%\install_%TS%.log"
+
+call :log "=== %APP_NAME% Installer started %date% %time% ==="
+
+REM --------- TEST INTERNET ----------
+call :log "[STEP] Verificando conexion a Internet..."
+ping -n 1 raw.githubusercontent.com >nul 2>&1
+if errorlevel 1 (
+  call :err "Sin conexion a Internet. Intenta de nuevo."
+  goto :END
+)
+call :log "[OK] Internet verificado"
+
+REM --------- COMPROBAR / INSTALAR PYTHON 3.11 ----------
+call :log "[STEP] Verificando Python 3.11..."
+set "PY_CMD="
+
+REM 1) Intentar 'py -3.11'
+py -3.11 -c "import sys;print(sys.version)" >nul 2>&1
+if not errorlevel 1 (
+  for /f "delims=" %%P in ('where py') do set "PY_CMD=py -3.11"
 )
 
-for /f "tokens=4-5 delims=. " %%i in ('ver') do set VERSION=%%i.%%j
-echo %GREEN%[INFO]%NC% Windows %VERSION% detectado
-
-REM Verificar arquitectura
-echo %BLUE%[STEP 2/10]%NC% Verificando arquitectura del sistema...
-if "%PROCESSOR_ARCHITECTURE%"=="AMD64" (
-    set "ARCH=x64"
-    echo %GREEN%[INFO]%NC% Arquitectura x64 detectada
-) else (
-    set "ARCH=x86"
-    echo %GREEN%[INFO]%NC% Arquitectura x86 detectada
+REM 2) Intentar 'python' si no hay PY_CMD
+if not defined PY_CMD (
+  for /f "delims=" %%P in ('where python 2^>nul') do (
+    python -c "import sys;import platform; v=platform.python_version_tuple(); print(int(v[0])==3 and int(v[1])==11)" 2>nul | find "True" >nul 2>&1
+    if not errorlevel 1 set "PY_CMD=python"
+  )
 )
 
-REM Crear directorio de instalación
-echo %BLUE%[STEP 3/10]%NC% Creando directorio de instalación...
-set "INSTALL_DIR=%USERPROFILE%\CinBehave"
-if exist "%INSTALL_DIR%" (
-    echo %YELLOW%[WARNING]%NC% El directorio ya existe. Actualizando instalación...
-    rmdir /s /q "%INSTALL_DIR%\temp" 2>nul
-) else (
-    mkdir "%INSTALL_DIR%"
-)
+REM 3) Instalar si no hay Python 3.11
+if not defined PY_CMD (
+  call :log "[INFO] Python 3.11 no encontrado. Instalando..."
+  set "PY_EXE=%INSTALL_DIR%\python-3.11.9-amd64.exe"
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '%PY_URL%' -OutFile '%PY_EXE%' -UseBasicParsing" 2>>"%LOG%"
+  if errorlevel 1 (
+    call :err "Fallo al descargar Python desde %PY_URL%"
+    goto :END
+  )
+  call :log "[INFO] Ejecutando instalador de Python..."
+  "%PY_EXE%" /quiet InstallAllUsers=0 PrependPath=1 Include_test=0 SimpleInstall=1 >>"%LOG%" 2>&1
+  if errorlevel 1 (
+    call :err "Error instalando Python."
+    goto :END
+  )
+  del /q "%PY_EXE%" >nul 2>&1
 
-cd /d "%INSTALL_DIR%"
-
-REM Verificar e instalar Python
-echo %BLUE%[STEP 4/10]%NC% Verificando Python...
-python --version >nul 2>&1
-if %errorLevel% neq 0 (
-    echo %YELLOW%[WARNING]%NC% Python no encontrado. Instalando Python 3.11...
-    
-    REM Descargar Python
-    echo %GREEN%[INFO]%NC% Descargando Python 3.11...
-    if "%ARCH%"=="x64" (
-        set "PYTHON_URL=https://www.python.org/ftp/python/3.11.6/python-3.11.6-amd64.exe"
-    ) else (
-        set "PYTHON_URL=https://www.python.org/ftp/python/3.11.6/python-3.11.6.exe"
+  REM re-intentar deteccion
+  py -3.11 -c "import sys;print(sys.version)" >nul 2>&1 && set "PY_CMD=py -3.11"
+  if not defined PY_CMD (
+    for /f "delims=" %%P in ('where python 2^>nul') do (
+      python -c "import sys;import platform; v=platform.python_version_tuple(); print(int(v[0])==3 and int(v[1])==11)" 2>nul | find "True" >nul 2>&1
+      if not errorlevel 1 set "PY_CMD=python"
     )
-    
-    powershell -Command "Invoke-WebRequest -Uri '%PYTHON_URL%' -OutFile 'python_installer.exe'"
-    
-    REM Instalar Python silenciosamente
-    echo %GREEN%[INFO]%NC% Instalando Python...
-    python_installer.exe /quiet InstallAllUsers=1 PrependPath=1 Include_test=0
-    
-    REM Esperar a que termine la instalación
-    timeout /t 30 /nobreak >nul
-    
-    REM Limpiar instalador
-    del python_installer.exe
-    
-    REM Verificar instalación
-    python --version >nul 2>&1
-    if %errorLevel% neq 0 (
-        echo %RED%[ERROR]%NC% Error instalando Python. Por favor instala Python manualmente.
-        pause
-        exit /b 1
-    )
+  )
+)
+
+if not defined PY_CMD (
+  call :err "No se pudo localizar Python 3.11 tras la instalacion. Verifica PATH e intenta de nuevo."
+  goto :END
+)
+call :log "[OK] Python verificado: %PY_CMD%"
+
+REM --------- CREAR / ACTUALIZAR VENV ----------
+call :log "[STEP] Creando venv..."
+if not exist "%VENV_DIR%" (
+  %PY_CMD% -m venv "%VENV_DIR%" >>"%LOG%" 2>&1
+  if errorlevel 1 (
+    call :err "Error creando venv."
+    goto :END
+  )
 ) else (
-    echo %GREEN%[INFO]%NC% Python encontrado:
-    python --version
+  call :log "[INFO] venv existente, continuando..."
 )
 
-REM Verificar pip
-echo %BLUE%[STEP 5/10]%NC% Verificando pip...
-python -m pip --version >nul 2>&1
-if %errorLevel% neq 0 (
-    echo %GREEN%[INFO]%NC% Instalando pip...
-    python -m ensurepip --upgrade
+set "PYV=%VENV_DIR%\Scripts\python.exe"
+set "PIPV=%VENV_DIR%\Scripts\pip.exe"
+if not exist "%PYV%" (
+  call :err "Python del venv no encontrado: %PYV%"
+  goto :END
 )
 
-REM Crear entorno virtual
-echo %BLUE%[STEP 6/10]%NC% Creando entorno virtual...
-python -m venv venv
-call venv\Scripts\activate.bat
+call :log "[STEP] Actualizando pip/setuptools/wheel..."
+"%PYV%" -m pip install --upgrade pip setuptools wheel --no-input >>"%LOG%" 2>&1
 
-REM Actualizar pip
-echo %BLUE%[STEP 7/10]%NC% Actualizando pip...
-python -m pip install --upgrade pip setuptools wheel
+REM --------- DESCARGAR ARCHIVOS DEL PROYECTO ----------
+call :log "[STEP] Descargando archivos del proyecto..."
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '%REPO_RAW%/requirements.txt' -OutFile '%INSTALL_DIR%\requirements.txt' -UseBasicParsing" 2>>"%LOG%"
+if errorlevel 1 (
+  call :err "No se pudo descargar requirements.txt"
+  goto :END
+)
 
-REM Instalar dependencias esenciales
-echo %BLUE%[STEP 8/10]%NC% Instalando dependencias...
-python -m pip install psutil
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '%REPO_RAW%/cinbehave_guii.py' -OutFile '%INSTALL_DIR%\cinbehave_guii.py' -UseBasicParsing" 2>>"%LOG%"
+if errorlevel 1 (
+  call :err "No se pudo descargar cinbehave_guii.py"
+  goto :END
+)
 
-REM Descargar aplicación desde GitHub
-echo %BLUE%[STEP 9/10]%NC% Descargando aplicación CinBehave...
-powershell -Command "Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/StevenM711/CinBehave/main/cinbehave_gui.py' -OutFile 'cinbehave_gui.py'"
-powershell -Command "Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/StevenM711/CinBehave/main/requirements.txt' -OutFile 'requirements.txt'"
+REM --------- PREPARAR REQUIREMENTS (filtrar SLEAP si WITH_SLEAP=0) ----------
+set "REQ=%INSTALL_DIR%\requirements.txt"
+set "REQ_FINAL=%INSTALL_DIR%\requirements_final.txt"
 
-REM Instalar dependencias específicas
-echo %GREEN%[INFO]%NC% Instalando dependencias de requirements.txt...
-python -m pip install -r requirements.txt
+if "%WITH_SLEAP%"=="1" (
+  copy /y "%REQ%" "%REQ_FINAL%" >nul
+  call :log "[INFO] Instalacion CON SLEAP"
+) else (
+  call :log "[INFO] Instalacion SIN SLEAP (filtrando sleap/tensorflow)"
+  >"%REQ_FINAL%" type nul
+  for /f "usebackq delims=" %%L in ("%REQ%") do (
+    set "LINE=%%L"
+    setlocal enabledelayedexpansion
+    echo !LINE! | findstr /i /r "^\s*sleap" >nul && (endlocal & goto :SKIPLINE)
+    echo !LINE! | findstr /i /r "^\s*tensorflow" >nul && (endlocal & goto :SKIPLINE)
+    >>"%REQ_FINAL%" echo %%L
+    endlocal
+    :SKIPLINE
+  )
+)
 
-REM Crear estructura de directorios
-mkdir users 2>nul
-mkdir temp 2>nul
-mkdir logs 2>nul
-mkdir config 2>nul
-mkdir assets 2>nul
-mkdir docs 2>nul
+REM --------- PIP INSTALL ----------
+call :log "[STEP] Instalando dependencias (puede tardar)..."
+"%PYV%" -m pip install --no-input --no-cache-dir -r "%REQ_FINAL%" >>"%LOG%" 2>&1
+if errorlevel 1 (
+  call :err "Fallo instalando dependencias. Revisa el log: %LOG%"
+  goto :END
+)
 
-REM Crear script de inicio
+REM --------- CREAR LANZADOR ----------
+call :log "[STEP] Creando lanzador..."
 (
-echo @echo off
-echo cd /d "%%~dp0"
-echo call venv\Scripts\activate.bat
-echo python cinbehave_gui.py
-echo pause
-) > start_cinbehave.bat
+  echo @echo off
+  echo "%VENV_DIR%\Scripts\python.exe" "%INSTALL_DIR%\cinbehave_guii.py"
+) > "%INSTALL_DIR%\run_cinbehave.bat"
 
-REM Crear acceso directo en el escritorio
-echo %GREEN%[INFO]%NC% Creando acceso directo en el escritorio...
-powershell -Command ^
-"$WshShell = New-Object -comObject WScript.Shell; ^
-$Shortcut = $WshShell.CreateShortcut('%USERPROFILE%\Desktop\CinBehave.lnk'); ^
-$Shortcut.TargetPath = '%INSTALL_DIR%\start_cinbehave.bat'; ^
-$Shortcut.WorkingDirectory = '%INSTALL_DIR%'; ^
-$Shortcut.Description = 'CinBehave - SLEAP Analysis GUI'; ^
-$Shortcut.Save()"
-
-REM Crear acceso en el menú inicio
-echo %GREEN%[INFO]%NC% Creando acceso en el menú inicio...
-set "START_MENU=%APPDATA%\Microsoft\Windows\Start Menu\Programs"
-mkdir "%START_MENU%\CinBehave" 2>nul
-powershell -Command ^
-"$WshShell = New-Object -comObject WScript.Shell; ^
-$Shortcut = $WshShell.CreateShortcut('%START_MENU%\CinBehave\CinBehave.lnk'); ^
-$Shortcut.TargetPath = '%INSTALL_DIR%\start_cinbehave.bat'; ^
-$Shortcut.WorkingDirectory = '%INSTALL_DIR%'; ^
-$Shortcut.Description = 'CinBehave - SLEAP Analysis GUI'; ^
-$Shortcut.Save()"
-
-REM Crear desinstalador
-(
-echo @echo off
-echo echo Desinstalando CinBehave...
+REM --------- FIN OK ----------
 echo.
-echo REM Eliminar accesos directos
-echo del "%%USERPROFILE%%\Desktop\CinBehave.lnk" 2^>nul
-echo rmdir /s /q "%%APPDATA%%\Microsoft\Windows\Start Menu\Programs\CinBehave" 2^>nul
-echo.
-echo REM Eliminar directorio principal
-echo cd /d "%%USERPROFILE%%"
-echo rmdir /s /q "CinBehave"
-echo.
-echo echo CinBehave desinstalado correctamente.
-echo pause
-) > uninstall.bat
+echo ===============================================================
+echo  INSTALACION COMPLETADA
+echo  Ejecuta: "%INSTALL_DIR%\run_cinbehave.bat"
+echo  Log:     %LOG%
+echo ===============================================================
+call :log "=== OK ==="
+goto :END
 
-echo %BLUE%[STEP 10/10]%NC% Finalizando instalación...
+:log
+echo %~1
+>>"%LOG%" echo %~1
+goto :eof
 
-REM Completar instalación
-cls
-echo.
-echo    ╔══════════════════════════════════════════════════════════════╗
-echo    ║                    INSTALACIÓN COMPLETA                      ║
-echo    ╠══════════════════════════════════════════════════════════════╣
-echo    ║                                                              ║
-echo    ║  ✅ CinBehave instalado en: %USERPROFILE%\CinBehave         ║
-echo    ║  ✅ Acceso directo creado en escritorio                      ║
-echo    ║  ✅ Acceso creado en menú inicio                             ║
-echo    ║  ✅ Python y dependencias instaladas                        ║
-echo    ║  ✅ Entorno virtual configurado                              ║
-echo    ║  ✅ Aplicación lista para usar                               ║
-echo    ║                                                              ║
-echo    ║  Para ejecutar:                                              ║
-echo    ║  • Doble clic en el icono del escritorio                    ║
-echo    ║  • O ejecutar: start_cinbehave.bat                          ║
-echo    ║                                                              ║
-echo    ║  Documentación: docs\                                       ║
-echo    ║  Logs: logs\cinbehave.log                                   ║
-echo    ║  Desinstalar: uninstall.bat                                 ║
-echo    ║                                                              ║
-echo    ╚══════════════════════════════════════════════════════════════╝
-echo.
+:err
+echo [ERROR] %~1
+>>"%LOG%" echo [ERROR] %~1
+goto :eof
 
-REM Preguntar si ejecutar
-set /p response="¿Deseas ejecutar CinBehave ahora? (s/n): "
-if /i "%response%"=="s" (
-    echo %GREEN%[INFO]%NC% Iniciando CinBehave...
-    start "" "%INSTALL_DIR%\start_cinbehave.bat"
-)
-
-echo.
-echo %GREEN%[INFO]%NC% Instalación completada exitosamente.
-echo %GREEN%[INFO]%NC% Presiona cualquier tecla para salir...
-pause >nul
-
+:END
 endlocal
