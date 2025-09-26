@@ -2,7 +2,12 @@
 setlocal EnableExtensions DisableDelayedExpansion
 
 REM ============================================================================
-REM CinBehave - Instalador Windows (v4 robust venv)
+REM CinBehave - Instalador Windows (v6)
+REM - Aísla Python roto en %USERPROFILE%\CinBehave\Python311
+REM - Ignora py.ini que secuestra el launcher
+REM - Detecta Python 3.11 válido via Registro (Lib\encodings presente)
+REM - Instala Python 3.11 si falta y usa su ruta directa
+REM - Descarga con curl; GUI con doble intento y placeholder
 REM ============================================================================
 
 set "APP_NAME=CinBehave"
@@ -35,102 +40,127 @@ if errorlevel 1 (
 REM --- Preparar carpetas ---
 if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%" >nul 2>&1
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%" >nul 2>&1
+cd /d "%INSTALL_DIR%"
 
 REM --- Timestamp seguro ---
 for /f "usebackq delims=" %%T in (`powershell -NoProfile -Command "(Get-Date).ToString('yyyyMMdd_HHmmss')"`) do set "TS=%%T"
 set "LOG=%LOG_DIR%\install_%TS%.log"
-
 call :log "=== %APP_NAME% Installer started %DATE% %TIME% ==="
 
 REM --- Internet ---
 call :log "[STEP] Verificando conexion a Internet..."
 ping -n 1 raw.githubusercontent.com >nul 2>&1
-if errorlevel 1 (
-  call :err "Sin conexion a Internet. Intenta de nuevo."
-  goto :END
-)
+if errorlevel 1 ( call :err "Sin conexion a Internet." & goto :END )
 call :log "[OK] Internet verificado"
 
-REM --- Python 3.11 ---
-call :log "[STEP] Verificando Python 3.11..."
-set "PY_CMD="
-py -3.11 -V >nul 2>&1 && set "PY_CMD=py -3.11"
-if not defined PY_CMD (
-  python -c "import sys; print(1 if (sys.version_info[0]==3 and sys.version_info[1]==11) else 0)" 2>nul | find "1" >nul 2>&1 && set "PY_CMD=python"
+REM --- Aislar Python roto en CinBehave (si existe) ---
+if exist "%INSTALL_DIR%\Python311\python.exe" (
+  call :log "[WARN] Python311 dentro de %INSTALL_DIR% detectado -> se renombra para evitarlo"
+  ren "%INSTALL_DIR%\Python311" "Python311.broken_%TS%" >nul 2>&1
 )
+
+REM --- Ignorar py.ini que manipule el launcher ---
+for %%F in ("%LocalAppData%\py.ini" "%ProgramData%\py.ini" "%USERPROFILE%\py.ini") do (
+  if exist "%%~F" (
+    call :log "[WARN] Se detecto %%~F -> renombrando a backup"
+    ren "%%~F" "py.ini.bak_%TS%" >nul 2>&1
+  )
+)
+
+REM --- Buscar Python 3.11 valido en Registro (que tenga Lib\encodings)
+set "PY_CMD="
+call :find_py311_reg "HKCU\Software\Python\PythonCore\3.11\InstallPath"
+if not defined PY_CMD call :find_py311_reg "HKLM\Software\Python\PythonCore\3.11\InstallPath"
+if not defined PY_CMD call :find_py311_reg "HKLM\Software\Wow6432Node\Python\PythonCore\3.11\InstallPath"
+
+REM --- Si no hay en Registro, intentar launcher y 'python' verificando version
+if not defined PY_CMD (
+  for /f "usebackq delims=" %%E in (`py -3.11 -c "import sys,os;print(sys.executable)" 2^>nul`) do (
+    if exist "%%~dp0..\Lib\encodings" ( REM no fiable; mejor verificar directamente
+    )
+  )
+)
+
+if not defined PY_CMD (
+  for /f "usebackq delims=" %%E in (`python -c "import sys,os;print(sys.executable if sys.version_info[:2]==(3,11) else '')" 2^>nul`) do (
+    if exist "%%~dp0Lib\encodings" (
+    )
+  )
+)
+
+REM --- Si seguimos sin Python 3.11 valido, instalar uno limpio
 if not defined PY_CMD (
   call :log "[INFO] Python 3.11 no encontrado. Instalando..."
   set "PY_EXE=%INSTALL_DIR%\python-3.11.9-amd64.exe"
-  powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '%PY_URL%' -OutFile '%PY_EXE%' -UseBasicParsing" 2>>"%LOG%"
-  if errorlevel 1 (
-    call :err "Fallo al descargar Python desde %PY_URL%"
-    goto :END
-  )
-  call :log "[INFO] Ejecutando instalador de Python..."
+  curl -fL -o "%PY_EXE%" "%PY_URL%" >>"%LOG%" 2>&1
+  if errorlevel 1 ( call :err "Fallo al descargar Python desde %PY_URL%" & goto :END )
+  call :log "[INFO] Ejecutando instalador de Python silencioso..."
   "%PY_EXE%" /quiet InstallAllUsers=0 PrependPath=1 Include_test=0 SimpleInstall=1 >>"%LOG%" 2>&1
-  if errorlevel 1 (
-    call :err "Error instalando Python."
-    goto :END
-  )
+  if errorlevel 1 ( call :err "Error instalando Python." & goto :END )
   del /q "%PY_EXE%" >nul 2>&1
 
-  py -3.11 -V >nul 2>&1 && set "PY_CMD=py -3.11"
-  if not defined PY_CMD (
-    python -c "import sys; print(1 if (sys.version_info[0]==3 and sys.version_info[1]==11) else 0)" 2>nul | find "1" >nul 2>&1 && set "PY_CMD=python"
-  )
+  REM Re-detectar por Registro (preferido)
+  call :find_py311_reg "HKCU\Software\Python\PythonCore\3.11\InstallPath"
+  if not defined PY_CMD call :find_py311_reg "HKLM\Software\Python\PythonCore\3.11\InstallPath"
+  if not defined PY_CMD call :find_py311_reg "HKLM\Software\Wow6432Node\Python\PythonCore\3.11\InstallPath"
 )
+
 if not defined PY_CMD (
-  call :err "No se pudo localizar Python 3.11 tras la instalacion. Verifica PATH e intenta de nuevo."
+  call :err "No se pudo localizar Python 3.11 valido. Revisa PATH/Registro e intenta de nuevo."
   goto :END
 )
-call :log "[OK] Python verificado: %PY_CMD%"
+call :log "[OK] Python seleccionado: %PY_CMD%"
 
-REM --- Obtener ruta real de python.exe 3.11 (para logs y estabilidad) ---
-for /f "usebackq delims=" %%E in (`%PY_CMD% -c "import sys,os;print(sys.executable)"`) do set "PY311_EXE=%%E"
-if not defined PY311_EXE set "PY311_EXE=%PY_CMD%"
-call :log "[INFO] Python exe: %PY311_EXE%"
-
-REM --- Crear venv (secuencial con fallbacks) ---
+REM --- Crear venv con fallbacks ---
 call :log "[STEP] Creando venv en %VENV_DIR% ..."
-if exist "%VENV_DIR%" (
-  call :log "[INFO] venv existente; se reutilizará."
+if exist "%VENV_DIR%\Scripts\python.exe" (
+  call :log "[INFO] venv existente; se reutilizara."
 ) else (
-  call :log "[TRY] python -m venv"
-  "%PY311_EXE%" -m venv "%VENV_DIR%" >>"%LOG%" 2>&1
+  call :log "[TRY] -m venv"
+  "%PY_CMD%" -m venv "%VENV_DIR%" >>"%LOG%" 2>&1
   if errorlevel 1 (
-    call :log "[WARN] venv fallo; intentando ensurepip y reintento"
-    "%PY311_EXE%" -m ensurepip --upgrade >>"%LOG%" 2>&1
-    "%PY311_EXE%" -m venv "%VENV_DIR%" >>"%LOG%" 2>&1
+    call :log "[WARN] venv fallo; ensurepip y reintento"
+    "%PY_CMD%" -m ensurepip --upgrade >>"%LOG%" 2>&1
+    "%PY_CMD%" -m venv "%VENV_DIR%" >>"%LOG%" 2>&1
   )
   if not exist "%VENV_DIR%\Scripts\python.exe" (
-    call :log "[WARN] venv aun no creado; instalando virtualenv y usando fallback"
-    "%PY311_EXE%" -m pip install --upgrade pip setuptools wheel >>"%LOG%" 2>&1
-    "%PY311_EXE%" -m pip install --upgrade virtualenv >>"%LOG%" 2>&1
-    "%PY311_EXE%" -m virtualenv "%VENV_DIR%" >>"%LOG%" 2>&1
+    call :log "[WARN] venv aun no creado; virtualenv como fallback"
+    "%PY_CMD%" -m pip install --upgrade pip setuptools wheel >>"%LOG%" 2>&1
+    "%PY_CMD%" -m pip install --upgrade virtualenv >>"%LOG%" 2>&1
+    "%PY_CMD%" -m virtualenv "%VENV_DIR%" >>"%LOG%" 2>&1
   )
   if not exist "%VENV_DIR%\Scripts\python.exe" (
     call :err "Error creando venv incluso con fallback (virtualenv)."
     goto :END
   )
 )
+
 set "PYV=%VENV_DIR%\Scripts\python.exe"
 set "PIPV=%VENV_DIR%\Scripts\pip.exe"
 
-REM --- Upgrades base ---
+REM --- Upgrades base en el venv ---
 call :log "[STEP] Actualizando pip/setuptools/wheel en el venv..."
 "%PYV%" -m pip install --upgrade pip setuptools wheel --no-input >>"%LOG%" 2>&1
 
-REM --- Descargar archivos del proyecto ---
-call :log "[STEP] Descargando archivos del proyecto..."
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '%REPO_RAW%/requirements.txt' -OutFile '%INSTALL_DIR%\requirements.txt' -UseBasicParsing" 2>>"%LOG%"
-if errorlevel 1 (
-  call :err "No se pudo descargar requirements.txt"
-  goto :END
+REM --- Descargas del proyecto (con curl) ---
+call :log "[STEP] Descargando requirements.txt..."
+curl -fL -o "%INSTALL_DIR%\requirements.txt" "%REPO_RAW%/requirements.txt" >>"%LOG%" 2>&1
+if errorlevel 1 ( call :err "No se pudo descargar requirements.txt" & goto :END )
+
+call :log "[STEP] Descargando GUI (intento 1: cinbehave_guii.py)..."
+curl -fL -o "%INSTALL_DIR%\cinbehave_guii.py" "%REPO_RAW%/cinbehave_guii.py" >>"%LOG%" 2>&1
+
+if not exist "%INSTALL_DIR%\cinbehave_guii.py" (
+  call :log "[INFO] Intento 2: cinbehave_gui.py"
+  curl -fL -o "%INSTALL_DIR%\cinbehave_guii.py" "%REPO_RAW%/cinbehave_gui.py" >>"%LOG%" 2>&1
 )
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '%REPO_RAW%/cinbehave_guii.py' -OutFile '%INSTALL_DIR%\cinbehave_guii.py' -UseBasicParsing" 2>>"%LOG%"
-if errorlevel 1 (
-  call :err "No se pudo descargar cinbehave_guii.py"
-  goto :END
+
+if not exist "%INSTALL_DIR%\cinbehave_guii.py" (
+  call :log "[WARN] No se pudo descargar la GUI; creando placeholder para continuar."
+  >"%INSTALL_DIR%\cinbehave_guii.py" (
+    echo print("CinBehave GUI placeholder.")
+    echo print("Coloca tu archivo GUI correcto en: %INSTALL_DIR%\cinbehave_guii.py")
+  )
 )
 
 REM --- Filtrar requirements si SIN SLEAP ---
@@ -140,7 +170,7 @@ if "%WITH_SLEAP%"=="1" (
   copy /y "%REQ%" "%REQ_FINAL%" >nul
   call :log "[INFO] Instalacion CON SLEAP"
 ) else (
-  call :log "[INFO] Instalacion SIN SLEAP (filtrando sleap/tensorflow via PowerShell)"
+  call :log "[INFO] Instalacion SIN SLEAP (filtrando sleap/tensorflow)"
   powershell -NoProfile -ExecutionPolicy Bypass -Command ^
     "(Get-Content '%REQ%') | Where-Object {$_ -notmatch '^\s*(sleap|tensorflow)'} | Set-Content -NoNewline '%REQ_FINAL%'"
 )
@@ -148,10 +178,7 @@ if "%WITH_SLEAP%"=="1" (
 REM --- Instalar dependencias ---
 call :log "[STEP] Instalando dependencias..."
 "%PYV%" -m pip install --no-input --no-cache-dir -r "%REQ_FINAL%" >>"%LOG%" 2>&1
-if errorlevel 1 (
-  call :err "Fallo instalando dependencias. Revisa el log: %LOG%"
-  goto :END
-)
+if errorlevel 1 ( call :err "Fallo instalando dependencias. Revisa el log: %LOG%" & goto :END )
 
 REM --- Lanzador ---
 call :log "[STEP] Creando lanzador..."
@@ -169,6 +196,16 @@ echo ===============================================================
 echo.
 pause
 goto :END
+
+:find_py311_reg
+REM Uso: call :find_py311_reg "HK...\...\3.11\InstallPath"
+for /f "tokens=2,*" %%A in ('reg query %~1 /ve 2^>nul ^| find "REG_SZ"') do (
+  set "CAND=%%B"
+  if exist "%%B\python.exe" if exist "%%B\Lib\encodings" (
+    set "PY_CMD=%%B\python.exe"
+  )
+)
+goto :eof
 
 :log
 echo %~1
